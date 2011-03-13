@@ -1,0 +1,17 @@
+; comment
+
+numalias i,1
+numalias effect,101
+stralias title,"The title"
+
+*start
+`This is just the beginning@`:skip 1
+br
+bg black, %effect
+`... or is it ?@
+goto *intro
+
+*intro
+bg "some\file\somewhere", %effect
+`This is the intro\
+skip -9
