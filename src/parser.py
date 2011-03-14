@@ -124,8 +124,8 @@ class Translator(object):
         text = token.value.replace('`', '')
 
         text = text + '{nw}'
-        text = text.replace('@', '{p=%(autoclick)d}')
-        text = text.replace('\\', '{p=%(autoclick)d}')
+        text = text.replace('@', '{w=%(autoclick)d}')
+        text = text.replace('\\', '{w=%(autoclick)d}')
         text = self.escape_text(text)
         self.out.write('"%s"\n' % text)
         if '\\' in token.value:
