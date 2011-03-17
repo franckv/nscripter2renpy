@@ -114,7 +114,7 @@ class Translator(object):
                 for val in self.variables[img]:
                     if imgDef != '':
                         imgDef += ', '
-                    imgDef += '\'%s==%s\', im.FactorScale(%s, 1.25, 1.25)' % (img.replace('$', ''), val.replace('\\', '\\\\\\\\'), val.replace('\\', '/'))
+                    imgDef += '\'%s==%s\', im.FactorScale(%s, 1.25, 1.25)' % (img.replace('$', ''), val.replace('\\', '/'), val.replace('\\', '/'))
                 self.write_statement('image bg %s = ConditionSwitch(%s)' % (self.images[img], imgDef))
             else:
                 self.write_statement('image bg %s = im.FactorScale(%s, 1.25, 1.25)' % (self.images[img], img.replace('\\', '/')))
@@ -163,6 +163,16 @@ class Translator(object):
                 leading = False
 
         return escaped.replace('"', '\\"')
+
+    def escape(self, token):
+        if token.type == "STR":
+            return token.value.replace('\\', '/')
+        elif token.type == "VARNUM":
+            return token.value.replace('%', '')
+        elif token.type == "VARSTR":
+            return token.value.replace('$', '')
+        else:
+            return token.value
 
     def read_skip(self, token):
         skipto = token.line + token.value
@@ -259,7 +269,7 @@ class Translator(object):
             if op is None:
                 break
 
-            self.write_statement(" %s" % op.value.replace('%', '').replace('$', '').replace('\\', '\\\\'), newline=False)
+            self.write_statement(" %s" % self.escape(op), newline=False)
 
         self.write_statement(":")
         self.indent += 1
@@ -269,8 +279,8 @@ class Translator(object):
 
     def cmd_inc(self):
         # VARNUM
-        var = self.parser.read("VARNUM").value.replace('%', '')
-        self.write_statement('$ %s+=1' % var)
+        var = self.parser.read("VARNUM")
+        self.write_statement('$ %s+=1' % self.escape(var))
 
     def cmd_mov(self):
         var = self.parser.read(["VARNUM", "VARSTR"])
@@ -285,7 +295,7 @@ class Translator(object):
             self.variables[var.value] = []
         self.variables[var.value].append(val.value)
 
-        self.write_statement('$ %s=%s' % (var.value.replace('%', '').replace('$', ''), val.value.replace('%', '').replace('$', '').replace('\\', '\\\\'))) 
+        self.write_statement('$ %s=%s' % (self.escape(var), self.escape(val))) 
 
     def cmd_numalias(self):
         # IDENTIFIER,NUM
@@ -355,9 +365,10 @@ class Translator(object):
 
     def cmd_stralias(self):
         # IDENTIFIER,STR
-        alias = self.parser.read("IDENTIFIER")
+        alias = self.parser.read("IDENTIFIER").value
         self.parser.read("COMMA")
         val = self.parser.read("STR")
+        self.write_statement('$ %s=%s' % (alias, self.escape(val)))
 
     def cmd_w(self):
         # NUM
@@ -371,9 +382,9 @@ class Translator(object):
 
     def cmd_waveloop(self):
         # STR
-        track = self.parser.read("IDENTIFIER").value
+        track = self.parser.read(["STR", "IDENTIFIER", "VARSTR"])
 
-        self.write_statement('play music "wave/%s.wav"' % track)
+        self.write_statement('play music %s' % self.escape(track))
 
     def cmd_wavestop(self):
         self.write_statement('stop music')
