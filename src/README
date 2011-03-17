@@ -10,12 +10,14 @@ The following commands are currently (at least partially) supported:
   - br
   - goto
   - gosub
+  - if
   - inc
   - skip
   - mov
   - numalias
   - play
   - playstop
+  - print
   - resettimer
   - return
   - setcursor

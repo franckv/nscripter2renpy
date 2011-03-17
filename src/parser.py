@@ -133,11 +133,12 @@ class Translator(object):
         else:
             sys.stderr.write('Invalid token: %s at %d\n' % (token.type, token.line))
 
-    def write_statement(self, line):
+    def write_statement(self, line, newline=True):
         for i in range(self.indent):
             self.out.write('  ')
         self.out.write(line)
-        self.out.write('\n')
+        if newline:
+            self.out.write('\n')
 
     def read_text(self, token):
         term = ''
@@ -178,6 +179,8 @@ class Translator(object):
             self.cmd_goto()
         elif token.value == 'gosub':
             self.cmd_gosub()
+        elif token.value == 'if':
+            self.cmd_if()
         elif token.value == 'inc':
             self.cmd_inc()
         elif token.value == 'mov':
@@ -188,6 +191,8 @@ class Translator(object):
             self.cmd_play()
         elif token.value == 'playstop':
             self.cmd_playstop()
+        elif token.value == 'print':
+            self.cmd_print()
         elif token.value == 'resettimer':
             self.cmd_resettimer()
         elif token.value == 'return':
@@ -246,6 +251,22 @@ class Translator(object):
         label = self.parser.read("LABEL").value
         self.write_statement('jump %s' % label.replace('*', ''))
 
+    def cmd_if(self):
+        self.write_statement("if", newline=False)
+        while True:
+            op = self.parser.read(["NUM", "VARNUM", "LT", "LE", "GT", "GE", "EQ", "NEQ", "AND", "OR"], mandatory=False)
+
+            if op is None:
+                break
+
+            self.write_statement(" %s" % op.value.replace('%', '').replace('$', '').replace('\\', '\\\\'), newline=False)
+
+        self.write_statement(":")
+        self.indent += 1
+        token = self.parser.read()
+        self.handle_token(token)
+        self.indent -= 1
+
     def cmd_inc(self):
         # VARNUM
         var = self.parser.read("VARNUM").value.replace('%', '')
@@ -283,6 +304,10 @@ class Translator(object):
 
     def cmd_playstop(self):
         self.write_statement('stop music')
+
+    def cmd_print(self):
+        # NUM
+        effect = self.parser.read("NUM", "VARNUM")
 
     def cmd_resettimer(self):
         pass
