@@ -79,6 +79,7 @@ class Translator(object):
         self.out = out
         self.nimage = 0
         self.images = {}
+        self.variables = {}
 
     def translate(self):
         skipdone = {}
@@ -116,6 +117,13 @@ class Translator(object):
         for img in self.images.keys():
             if img.startswith('"#'):
                 self.out.write('  image bg %s = %s\n' % (self.images[img], img.replace('\\', '/')))
+            elif img.startswith('$'):
+                imgDef = ''
+                for val in self.variables[img]:
+                    if imgDef != '':
+                        imgDef += ', '
+                    imgDef += '\'%s==%s\', im.FactorScale(%s, 1.25, 1.25)' % (img.replace('$', ''), val.replace('\\', '\\\\\\\\'), val.replace('\\', '/'))
+                self.out.write('  image bg %s = ConditionSwitch(%s)\n' % (self.images[img], imgDef))
             else:
                 self.out.write('  image bg %s = im.FactorScale(%s, 1.25, 1.25)\n' % (self.images[img], img.replace('\\', '/')))
 
@@ -148,61 +156,58 @@ class Translator(object):
         self.out.write('jump %s\n' % self.parser.skiplabel[skipto])
 
     def read_command(self, token):
-        if token.value == 'numalias':
-            self.cmd_numalias()
-        elif token.value == 'stralias':
-            self.cmd_stralias()
-        elif token.value == 'goto':
-            self.cmd_goto()
-        elif token.value == 'gosub':
-            self.cmd_gosub()
+        if token.value == 'autoclick':
+            self.cmd_autoclick()
         elif token.value == 'bg':
             self.cmd_bg()
         elif token.value == 'br':
             self.cmd_br()
-        elif token.value == 'autoclick':
-            self.cmd_autoclick()
-        elif token.value == 'setwindow':
-            self.cmd_setwindow()
-        elif token.value == 'windoweffect':
-            self.cmd_windoweffect()
-        elif token.value == 'setcursor':
-            self.cmd_setcursor()
+        elif token.value == 'goto':
+            self.cmd_goto()
+        elif token.value == 'gosub':
+            self.cmd_gosub()
+        elif token.value == 'inc':
+            self.cmd_inc()
+        elif token.value == 'mov':
+            self.cmd_mov()
+        elif token.value == 'numalias':
+            self.cmd_numalias()
         elif token.value == 'play':
             self.cmd_play()
         elif token.value == 'playstop':
             self.cmd_playstop()
+        elif token.value == 'resettimer':
+            self.cmd_resettimer()
         elif token.value == 'return':
             self.cmd_return()
+        elif token.value == 'setcursor':
+            self.cmd_setcursor()
+        elif token.value == 'setwindow':
+            self.cmd_setwindow()
+        elif token.value == 'stralias':
+            self.cmd_stralias()
         elif token.value == '!w':
             self.cmd_w()
+        elif token.value == 'waittimer':
+            self.cmd_waittimer()
+        elif token.value == 'waveloop':
+            self.cmd_waveloop()
+        elif token.value == 'wavestop':
+            self.cmd_wavestop()
+        elif token.value == 'windoweffect':
+            self.cmd_windoweffect()
         else:
             sys.stderr.write('Unknown command: %s\n' % token.value)
 
-    def cmd_numalias(self):
-        # IDENTIFIER,NUM
-        alias = self.parser.read("IDENTIFIER")
-        self.parser.read("COMMA")
-        val = self.parser.read("NUM")
-
-    def cmd_stralias(self):
-        # IDENTIFIER,STR
-        alias = self.parser.read("IDENTIFIER")
-        self.parser.read("COMMA")
-        val = self.parser.read("STR")
-
-    def cmd_goto(self):
-        # LABEL
-        label = self.parser.read("LABEL").value
-        self.out.write('jump %s\n' % label.replace('*', ''))
-
-    def cmd_gosub(self):
-        # LABEL
-        label = self.parser.read("LABEL").value
-        self.out.write('call %s\n' % label.replace('*', ''))
+    def cmd_autoclick(self):
+        # NUM
+        autoclick = self.parser.read("NUM").value
+        if autoclick == '0':
+            autoclick = '3600000'
+        self.out.write('$ autoclick=%s/1000\n' % autoclick)
 
     def cmd_bg(self):
-        bg = self.parser.read(["STR", "COLOR"])
+        bg = self.parser.read(["STR", "COLOR", "VARSTR"])
         self.parser.read("COMMA")
         effect = self.parser.read(["NUM", "VARNUM"])
 
@@ -219,12 +224,69 @@ class Translator(object):
     def cmd_br(self):
         self.out.write('".{fast}{nw}"\n')
 
-    def cmd_autoclick(self):
-        # NUM
-        autoclick = self.parser.read("NUM").value
-        if autoclick == '0':
-            autoclick = '3600000'
-        self.out.write('$ autoclick=%s/1000\n' % autoclick)
+    def cmd_gosub(self):
+        # LABEL
+        label = self.parser.read("LABEL").value
+        self.out.write('call %s\n' % label.replace('*', ''))
+
+    def cmd_goto(self):
+        # LABEL
+        label = self.parser.read("LABEL").value
+        self.out.write('jump %s\n' % label.replace('*', ''))
+
+    def cmd_inc(self):
+        # VARNUM
+        var = self.parser.read("VARNUM").value.replace('%', '')
+        self.out.write('$ %s+=1\n' % var)
+
+    def cmd_mov(self):
+        var = self.parser.read(["VARNUM", "VARSTR"])
+        self.parser.read("COMMA")
+
+        if var.type == "VARNUM":
+            val = self.parser.read(["NUM", "VARNUM"])
+        else:
+            val = self.parser.read(["STR", "VARSTR"])
+
+        if not var.value in self.variables:
+            self.variables[var.value] = []
+        self.variables[var.value].append(val.value)
+
+        self.out.write('$ %s=%s\n' % (var.value.replace('%', '').replace('$', ''), val.value.replace('%', '').replace('$', '').replace('\\', '\\\\'))) 
+
+    def cmd_numalias(self):
+        # IDENTIFIER,NUM
+        alias = self.parser.read("IDENTIFIER")
+        self.parser.read("COMMA")
+        val = self.parser.read("NUM")
+
+    def cmd_play(self):
+        # STR
+        track = self.parser.read("STR").value.replace('*', '').replace('"', '')
+
+        if len(track) == 1:
+            track = '0' + track
+
+        self.out.write('play music "CD/track%s.ogg"\n' % track)
+
+    def cmd_playstop(self):
+        self.out.write('stop music\n')
+
+    def cmd_resettimer(self):
+        pass
+
+    def cmd_return(self):
+        self.out.write('return\n')
+
+    def cmd_setcursor(self):
+        # NUM,STR,NUM,NUM
+        self.parser.read("NUM")
+        self.parser.read("COMMA")
+        self.parser.read("STR")
+        self.parser.read("COMMA")
+        self.parser.read("NUM")
+        self.parser.read("COMMA")
+        self.parser.read("NUM")
 
     def cmd_setwindow(self):
         # NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,COLOR,NUM,NUM,NUM,NUM
@@ -254,6 +316,31 @@ class Translator(object):
             self.parser.read("COMMA")
             self.parser.read("NUM")
 
+    def cmd_stralias(self):
+        # IDENTIFIER,STR
+        alias = self.parser.read("IDENTIFIER")
+        self.parser.read("COMMA")
+        val = self.parser.read("STR")
+
+    def cmd_w(self):
+        # NUM
+        wait = self.parser.read("NUM")
+        self.out.write('$ renpy.pause(%s/1000)\n' % wait.value)
+
+    def cmd_waittimer(self):
+        # NUM
+        timer = self.parser.read(["NUM", "VARNUM"]).value.replace('%', '')
+        self.out.write('$ renpy.pause(%s/1000)\n' % timer)
+
+    def cmd_waveloop(self):
+        # STR
+        track = self.parser.read("IDENTIFIER").value
+
+        self.out.write('play music "wave/%s.wav"\n' % track)
+
+    def cmd_wavestop(self):
+        self.out.write('stop music\n')
+
     def cmd_windoweffect(self):
         # NUM[,NUM[,STR]]
         self.parser.read("NUM")
@@ -263,36 +350,6 @@ class Translator(object):
             comma = self.parser.read("COMMA", mandatory=False)
             if comma is not None:
                 self.parser.read("STR")
-
-    def cmd_setcursor(self):
-        # NUM,STR,NUM,NUM
-        self.parser.read("NUM")
-        self.parser.read("COMMA")
-        self.parser.read("STR")
-        self.parser.read("COMMA")
-        self.parser.read("NUM")
-        self.parser.read("COMMA")
-        self.parser.read("NUM")
-
-    def cmd_play(self):
-        # STR
-        track = self.parser.read("STR").value.replace('*', '').replace('"', '')
-
-        if len(track) == 1:
-            track = '0' + track
-
-        self.out.write('play music "CD/track%s.ogg"\n' % track)
-
-    def cmd_playstop(self):
-        self.out.write('stop music\n')
-
-    def cmd_return(self):
-        self.out.write('return\n')
-
-    def cmd_w(self):
-        # NUM
-        wait = self.parser.read("NUM")
-        self.out.write('$ renpy.pause(%s/1000)\n' % wait.value)
 
 if __name__ == '__main__':
     parser = Parser()
