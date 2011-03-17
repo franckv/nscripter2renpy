@@ -1,0 +1,28 @@
+A tool that converts nscripter scripts to renpy.
+The script must be decompressed before it can be converted. Graphics and music are not handled.
+
+Usage:
+    python main.py -f script.txt > script.rpy
+
+The following commands are currently (at least partially) supported:
+  - autoclick
+  - bg
+  - br
+  - goto
+  - gosub
+  - inc
+  - skip
+  - mov
+  - numalias
+  - play
+  - playstop
+  - resettimer
+  - return
+  - setcursor
+  - setwindow
+  - stralias
+  - !w
+  - waittimer
+  - waveloop
+  - wavestop
+  - windoweffect
