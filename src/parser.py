@@ -80,11 +80,12 @@ class Translator(object):
         self.nimage = 0
         self.images = {}
         self.variables = {}
+        self.indent = 0
 
     def translate(self):
         skipdone = {}
 
-        self.out.write('label start:\n')
+        self.write_statement('label start:')
         while True:
             token = self.parser.read()
             if token is None:
@@ -92,35 +93,37 @@ class Translator(object):
 
             for skipto in self.parser.skiplabel.keys():
                 if not skipto in skipdone and skipto <= token.line:
-                    self.out.write('label %s:\n' % self.parser.skiplabel[skipto])
+                    self.write_statement('label %s:' % self.parser.skiplabel[skipto])
                     skipdone[skipto] = True
                     break
 
             self.handle_token(token)
 
-        self.out.write('\n')
-        self.out.write('init:\n')
-        self.out.write('  $ narrator = Character(None, kind=nvl)\n')
-        self.out.write('  $ autoclick = 3600\n\n')
+        self.write_statement('')
+        self.write_statement('init:')
+        self.indent += 1
+        self.write_statement('$ narrator = Character(None, kind=nvl)')
+        self.write_statement('$ autoclick = 3600')
+        self.write_statement('')
 
         for img in self.images.keys():
             if img.startswith('"#'):
-                self.out.write('  image bg %s = %s\n' % (self.images[img], img.replace('\\', '/')))
+                self.write_statement('image bg %s = %s' % (self.images[img], img.replace('\\', '/')))
             elif img.startswith('$'):
                 imgDef = ''
                 for val in self.variables[img]:
                     if imgDef != '':
                         imgDef += ', '
                     imgDef += '\'%s==%s\', im.FactorScale(%s, 1.25, 1.25)' % (img.replace('$', ''), val.replace('\\', '\\\\\\\\'), val.replace('\\', '/'))
-                self.out.write('  image bg %s = ConditionSwitch(%s)\n' % (self.images[img], imgDef))
+                self.write_statement('image bg %s = ConditionSwitch(%s)' % (self.images[img], imgDef))
             else:
-                self.out.write('  image bg %s = im.FactorScale(%s, 1.25, 1.25)\n' % (self.images[img], img.replace('\\', '/')))
+                self.write_statement('image bg %s = im.FactorScale(%s, 1.25, 1.25)' % (self.images[img], img.replace('\\', '/')))
 
     def handle_token(self, token):
         if token.type == "IDENTIFIER":
             self.read_command(token)
         elif token.type == "LABEL":
-            self.out.write('label %s:\n' % token.value.replace('*', ''))
+            self.write_statement('label %s:' % token.value.replace('*', ''))
         elif token.type == "TEXT":
             self.read_text(token)
         elif token.type == "SKIP":
@@ -130,6 +133,12 @@ class Translator(object):
         else:
             sys.stderr.write('Invalid token: %s at %d\n' % (token.type, token.line))
 
+    def write_statement(self, line):
+        for i in range(self.indent):
+            self.out.write('  ')
+        self.out.write(line)
+        self.out.write('\n')
+
     def read_text(self, token):
         term = ''
         text = token.value.replace('`', '')
@@ -138,9 +147,9 @@ class Translator(object):
         text = text.replace('@', '{w=%(autoclick)d}')
         text = text.replace('\\', '{w=%(autoclick)d}')
         text = self.escape_text(text)
-        self.out.write('"%s"\n' % text)
+        self.write_statement('"%s"' % text)
         if '\\' in token.value:
-            self.out.write('nvl clear\n')
+            self.write_statement('nvl clear')
 
     def escape_text(self, text):
         escaped = ''
@@ -156,7 +165,7 @@ class Translator(object):
 
     def read_skip(self, token):
         skipto = token.line + token.value
-        self.out.write('jump %s\n' % self.parser.skiplabel[skipto])
+        self.write_statement('jump %s' % self.parser.skiplabel[skipto])
 
     def read_command(self, token):
         if token.value == 'autoclick':
@@ -207,7 +216,7 @@ class Translator(object):
         autoclick = self.parser.read("NUM").value
         if autoclick == '0':
             autoclick = '3600000'
-        self.out.write('$ autoclick=%s/1000\n' % autoclick)
+        self.write_statement('$ autoclick=%s/1000' % autoclick)
 
     def cmd_bg(self):
         bg = self.parser.read(["STR", "COLOR", "VARSTR"])
@@ -222,25 +231,25 @@ class Translator(object):
             self.images[img] = "__image__%i" % self.nimage
             self.nimage += 1
 
-        self.out.write('scene bg %s\n' % self.images[img])
+        self.write_statement('scene bg %s' % self.images[img])
 
     def cmd_br(self):
-        self.out.write('".{fast}{nw}"\n')
+        self.write_statement('".{fast}{nw}"')
 
     def cmd_gosub(self):
         # LABEL
         label = self.parser.read("LABEL").value
-        self.out.write('call %s\n' % label.replace('*', ''))
+        self.write_statement('call %s' % label.replace('*', ''))
 
     def cmd_goto(self):
         # LABEL
         label = self.parser.read("LABEL").value
-        self.out.write('jump %s\n' % label.replace('*', ''))
+        self.write_statement('jump %s' % label.replace('*', ''))
 
     def cmd_inc(self):
         # VARNUM
         var = self.parser.read("VARNUM").value.replace('%', '')
-        self.out.write('$ %s+=1\n' % var)
+        self.write_statement('$ %s+=1' % var)
 
     def cmd_mov(self):
         var = self.parser.read(["VARNUM", "VARSTR"])
@@ -255,7 +264,7 @@ class Translator(object):
             self.variables[var.value] = []
         self.variables[var.value].append(val.value)
 
-        self.out.write('$ %s=%s\n' % (var.value.replace('%', '').replace('$', ''), val.value.replace('%', '').replace('$', '').replace('\\', '\\\\'))) 
+        self.write_statement('$ %s=%s' % (var.value.replace('%', '').replace('$', ''), val.value.replace('%', '').replace('$', '').replace('\\', '\\\\'))) 
 
     def cmd_numalias(self):
         # IDENTIFIER,NUM
@@ -270,16 +279,16 @@ class Translator(object):
         if len(track) == 1:
             track = '0' + track
 
-        self.out.write('play music "CD/track%s.ogg"\n' % track)
+        self.write_statement('play music "CD/track%s.ogg"' % track)
 
     def cmd_playstop(self):
-        self.out.write('stop music\n')
+        self.write_statement('stop music')
 
     def cmd_resettimer(self):
         pass
 
     def cmd_return(self):
-        self.out.write('return\n')
+        self.write_statement('return')
 
     def cmd_setcursor(self):
         # NUM,STR,NUM,NUM
@@ -308,7 +317,7 @@ class Translator(object):
             self.images[img] = '__image__%i' % self.nimage
             self.nimage += 1
 
-        self.out.write('scene bg %s\n' % self.images[img])
+        self.write_statement('scene bg %s' % self.images[img])
 
         if bg.type == "STR":
             r = 2
@@ -328,21 +337,21 @@ class Translator(object):
     def cmd_w(self):
         # NUM
         wait = self.parser.read("NUM")
-        self.out.write('$ renpy.pause(%s/1000)\n' % wait.value)
+        self.write_statement('$ renpy.pause(%s/1000)' % wait.value)
 
     def cmd_waittimer(self):
         # NUM
         timer = self.parser.read(["NUM", "VARNUM"]).value.replace('%', '')
-        self.out.write('$ renpy.pause(%s/1000)\n' % timer)
+        self.write_statement('$ renpy.pause(%s/1000)' % timer)
 
     def cmd_waveloop(self):
         # STR
         track = self.parser.read("IDENTIFIER").value
 
-        self.out.write('play music "wave/%s.wav"\n' % track)
+        self.write_statement('play music "wave/%s.wav"' % track)
 
     def cmd_wavestop(self):
-        self.out.write('stop music\n')
+        self.write_statement('stop music')
 
     def cmd_windoweffect(self):
         # NUM[,NUM[,STR]]
