@@ -95,19 +95,8 @@ class Translator(object):
                     self.out.write('label %s:\n' % self.parser.skiplabel[skipto])
                     skipdone[skipto] = True
                     break
-                
-            if token.type == "IDENTIFIER":
-                self.read_command(token)
-            elif token.type == "LABEL":
-                self.out.write('label %s:\n' % token.value.replace('*', ''))
-            elif token.type == "TEXT":
-                self.read_text(token)
-            elif token.type == "SKIP":
-                self.read_skip(token)
-            elif token.type == "SEP":
-                pass
-            else:
-                sys.stderr.write('Invalid token: %s at %d\n' % (token.type, token.line))
+
+            self.handle_token(token)
 
         self.out.write('\n')
         self.out.write('init:\n')
@@ -126,6 +115,20 @@ class Translator(object):
                 self.out.write('  image bg %s = ConditionSwitch(%s)\n' % (self.images[img], imgDef))
             else:
                 self.out.write('  image bg %s = im.FactorScale(%s, 1.25, 1.25)\n' % (self.images[img], img.replace('\\', '/')))
+
+    def handle_token(self, token):
+        if token.type == "IDENTIFIER":
+            self.read_command(token)
+        elif token.type == "LABEL":
+            self.out.write('label %s:\n' % token.value.replace('*', ''))
+        elif token.type == "TEXT":
+            self.read_text(token)
+        elif token.type == "SKIP":
+            self.read_skip(token)
+        elif token.type == "SEP":
+            pass
+        else:
+            sys.stderr.write('Invalid token: %s at %d\n' % (token.type, token.line))
 
     def read_text(self, token):
         term = ''
