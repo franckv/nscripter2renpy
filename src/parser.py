@@ -207,6 +207,10 @@ class Translator(object):
             self.cmd_resettimer()
         elif token.value == 'return':
             self.cmd_return()
+        elif token.value == 'select':
+            self.cmd_select()
+        elif token.value == 'selgosub':
+            self.cmd_selgosub()
         elif token.value == 'setcursor':
             self.cmd_setcursor()
         elif token.value == 'setwindow':
@@ -324,6 +328,36 @@ class Translator(object):
 
     def cmd_return(self):
         self.write_statement('return')
+
+    def cmd_select(self):
+        self.write_statement('menu:')
+        while True:
+            text = self.parser.read("TEXT")
+            self.parser.read("COMMA")
+            label = self.parser.read("LABEL")
+
+            text = text.value.replace('`', '')
+            text = self.escape_text(text)
+            self.write_statement('  "%s":' % text)
+            self.write_statement('    jump %s' % label.value.replace('*', ''))
+
+            if self.parser.read("COMMA", mandatory=False) is None:
+                break
+
+    def cmd_selgosub(self):
+        self.write_statement('menu:')
+        while True:
+            text = self.parser.read("TEXT")
+            self.parser.read("COMMA")
+            label = self.parser.read("LABEL")
+
+            text = text.value.replace('`', '')
+            text = self.escape_text(text)
+            self.write_statement('  "%s":' % text)
+            self.write_statement('    call %s' % label.value.replace('*', ''))
+
+            if self.parser.read("COMMA", mandatory=False) is None:
+                break
 
     def cmd_setcursor(self):
         # NUM,STR,NUM,NUM
