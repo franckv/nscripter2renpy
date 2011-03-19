@@ -100,10 +100,8 @@ class Translator(object):
             self.handle_token(token)
 
         self.write_statement('')
-        self.write_statement('init:')
+        self.write_statement('init 2:')
         self.indent += 1
-        self.write_statement('$ narrator = Character(None, kind=nvl)')
-        self.write_statement('$ autoclick = 3600')
         self.write_statement('')
 
         for img in self.images.keys():
