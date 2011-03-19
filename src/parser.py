@@ -100,12 +100,6 @@ class Translator(object):
             self.handle_token(token)
 
         self.write_statement('')
-        self.write_statement('init python:')
-        self.indent += 1
-        self.write_statement('menu = nvl_menu')
-        self.indent -= 1
-
-        self.write_statement('')
         self.write_statement('init:')
         self.indent += 1
         self.write_statement('$ narrator = Character(None, kind=nvl)')
@@ -120,10 +114,10 @@ class Translator(object):
                 for val in self.variables[img]:
                     if imgDef != '':
                         imgDef += ', '
-                    imgDef += '\'%s==%s\', im.FactorScale(%s, 1.25, 1.25)' % (img.replace('$', ''), val.replace('\\', '/'), val.replace('\\', '/'))
+                    imgDef += '\'%s==%s\', scale(%s)' % (img.replace('$', ''), val.replace('\\', '/'), val.replace('\\', '/'))
                 self.write_statement('image bg %s = ConditionSwitch(%s)' % (self.images[img], imgDef))
             else:
-                self.write_statement('image bg %s = im.FactorScale(%s, 1.25, 1.25)' % (self.images[img], img.replace('\\', '/')))
+                self.write_statement('image bg %s = scale(%s)' % (self.images[img], img.replace('\\', '/')))
 
     def handle_token(self, token):
         if token.type == "IDENTIFIER":
