@@ -8,10 +8,12 @@ The following commands are currently (at least partially) supported:
   - autoclick
   - bg
   - br
+  - cl
   - goto
   - gosub
   - if
   - inc
+  - ld
   - skip
   - mov
   - numalias

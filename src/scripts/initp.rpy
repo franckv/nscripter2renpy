@@ -11,7 +11,6 @@ init 1:
     autoclick = 3600
 
     def scale(img):
-      print(img)
       (w, h) = Image(img).load().get_size()
       rw = config.screen_width / float(w)
       rh = config.screen_height / float(h)

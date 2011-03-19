@@ -84,7 +84,17 @@ class Token(object):
         self.type = type
         self.value = value
         self.line = line
- 
+        self.escaped = value
+
+    def __hash__(self):
+        return self.__repr__().__hash__()
+
+    def __eq__(self, other):
+        return self.__repr__() == other.__repr__()
+
+    def __repr__(self):
+        return '<Token type=%s, value=%s>' % (self.type, self.value)
+
 class Lexer(object):
     """ A lexical scanner. It takes in an input and a set of rules based
         on reqular expressions. It then scans the input and returns the

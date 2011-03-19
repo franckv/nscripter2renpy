@@ -58,6 +58,18 @@ class Parser(object):
 
         self.current = 0
 
+    def escape(self, token):
+        if token.type == "STR":
+            return token.value.replace('\\', '/')
+        elif token.type == "VARNUM":
+            return token.value.replace('%', '')
+        elif token.type == "VARSTR":
+            return token.value.replace('$', '')
+        elif token.type == "COLOR":
+            return '"%s"' % token.value
+        else:
+            return token.value
+
     def read(self, tokenType=None, mandatory=True):
         if self.current >= len(self.tokens):
             return None
@@ -66,6 +78,7 @@ class Parser(object):
 
         if tokenType is None or (type(tokenType).__name__=='list' and token.type in tokenType) or token.type == tokenType:
             self.current += 1
+            token.escaped = self.escape(token)
             return token
         else:
             if mandatory:
@@ -103,19 +116,28 @@ class Translator(object):
         self.write_statement('')
         self.write_statement('init 2:')
         self.indent += 1
+        self.generate_images()
 
-        for img in self.images.keys():
-            if img.startswith('"#'):
-                self.write_statement('image bg %s = %s' % (self.images[img], img.replace('\\', '/')))
-            elif img.startswith('$'):
+    def generate_images(self):
+        for (pos, img) in self.images.keys():
+            if img.type == 'COLOR':
+                self.write_statement('image %s %s = %s' % (pos, self.images[(pos, img)], img.escaped))
+            elif img.type == 'VARSTR':
                 imgDef = ''
                 for val in self.variables[img]:
                     if imgDef != '':
                         imgDef += ', '
-                    imgDef += '\'%s==%s\', scale(%s)' % (img.replace('$', ''), val.replace('\\', '/'), val.replace('\\', '/'))
-                self.write_statement('image bg %s = ConditionSwitch(%s)' % (self.images[img], imgDef))
+                    if val.value.startswith('":a;'):
+                        imgDef += '\'%s==%s\', alpha_blend(%s)' % (img.escaped, val.escaped, val.escaped.replace(':a;', '').lower())
+                    else:
+                        imgDef += '\'%s==%s\', scale(%s)' % (img.escaped, val.escaped, val.escaped.lower())
+                self.write_statement('image %s %s = ConditionSwitch(%s)' %  (pos, self.images[(pos, img)], imgDef))
             else:
-                self.write_statement('image bg %s = scale(%s)' % (self.images[img], img.replace('\\', '/')))
+                if img.value.startswith('":a;'):
+                    self.write_statement('image %s %s = alpha_blend(%s)' % (pos, self.images[(pos, img)], img.escaped.replace(':a;', '').lower()))
+                else:
+                    self.write_statement('image %s %s = scale(%s)' % (pos, self.images[(pos, img)], img.escaped.lower()))
+
 
     def handle_token(self, token):
         if token.type == "IDENTIFIER":
@@ -164,30 +186,16 @@ class Translator(object):
 
         return escaped.replace('"', '\\"')
 
-    def escape(self, token):
-        if token.type == "STR":
-            return token.value.replace('\\', '/')
-        elif token.type == "VARNUM":
-            return token.value.replace('%', '')
-        elif token.type == "VARSTR":
-            return token.value.replace('$', '')
-        else:
-            return token.value
-
     def read_skip(self, token):
         skipto = token.line + token.value
         self.write_statement('jump %s' % self.parser.skiplabel[skipto])
 
-    def get_image(self, img):
-        val = img.value
-        if img.type == "COLOR":
-            val = '"%s"' % val
-
-        if not val in self.images:
-            self.images[val] = "__image__%i" % self.nimage
+    def get_image(self, img, pos):
+        if not (pos, img) in self.images:
+            self.images[(pos, img)] = "__image__%i" % self.nimage
             self.nimage += 1
 
-        return self.images[val]
+        return self.images[(pos, img)]
 
 
     def read_command(self, token):
@@ -197,6 +205,8 @@ class Translator(object):
             self.cmd_bg()
         elif token.value == 'br':
             self.cmd_br()
+        elif token.value == 'cl':
+            self.cmd_cl()
         elif token.value == 'goto':
             self.cmd_goto()
         elif token.value == 'gosub':
@@ -205,6 +215,8 @@ class Translator(object):
             self.cmd_if()
         elif token.value == 'inc':
             self.cmd_inc()
+        elif token.value == 'ld':
+            self.cmd_ld()
         elif token.value == 'mov':
             self.cmd_mov()
         elif token.value == 'numalias':
@@ -264,10 +276,24 @@ class Translator(object):
         self.parser.read("COMMA")
         effect = self.parser.read(["NUM", "VARNUM"])
 
-        self.write_statement('scene bg %s' % self.get_image(bg))
+        img = self.get_image(bg, 'bg')
+        self.write_statement('scene bg %s' % img)
 
     def cmd_br(self):
         self.write_statement('".{fast}{nw}"')
+
+    def cmd_cl(self):
+        # IDENTIFIER,NUM
+        pos = self.parser.read("IDENTIFIER").value
+        self.parser.read("COMMA")
+        effect = self.parser.read(["NUM", "VARNUM"])
+
+        if pos == 'a':
+            self.write_statement('hide r')
+            self.write_statement('hide c')
+            self.write_statement('hide l')
+        else:
+            self.write_statement('hide %s' % pos)
 
     def cmd_gosub(self):
         # LABEL
@@ -287,7 +313,7 @@ class Translator(object):
             if op is None:
                 break
 
-            self.write_statement(" %s" % self.escape(op), newline=False)
+            self.write_statement(" %s" % op.escaped, newline=False)
 
         self.write_statement(":")
         self.indent += 1
@@ -298,7 +324,24 @@ class Translator(object):
     def cmd_inc(self):
         # VARNUM
         var = self.parser.read("VARNUM")
-        self.write_statement('$ %s+=1' % self.escape(var))
+        self.write_statement('$ %s+=1' % var.escaped)
+
+    def cmd_ld(self):
+        # IDENTIFIER,STR,NUM
+        pos = self.parser.read("IDENTIFIER").value
+        self.parser.read("COMMA")
+        char = self.parser.read(["STR", "VARSTR"])
+        self.parser.read("COMMA")
+        effect = self.parser.read(["NUM", "VARNUM"])
+
+        img = self.get_image(char, pos)
+        loc = ''
+        if pos == 'r':
+            loc = ' at right2'
+        elif pos == 'l':
+            loc = ' at left2'
+
+        self.write_statement('show %s %s%s' % (pos, img, loc))
 
     def cmd_mov(self):
         var = self.parser.read(["VARNUM", "VARSTR"])
@@ -309,11 +352,11 @@ class Translator(object):
         else:
             val = self.parser.read(["STR", "VARSTR"])
 
-        if not var.value in self.variables:
-            self.variables[var.value] = []
-        self.variables[var.value].append(val.value)
+        if not var in self.variables:
+            self.variables[var] = []
+        self.variables[var].append(val)
 
-        self.write_statement('$ %s=%s' % (self.escape(var), self.escape(val))) 
+        self.write_statement('$ %s=%s' % (var.escaped, val.escaped)) 
 
     def cmd_numalias(self):
         # IDENTIFIER,NUM
@@ -392,15 +435,8 @@ class Translator(object):
 
         bg = self.parser.read(["STR", "COLOR"])
 
-        img = bg.value
-        if bg.type == "COLOR":
-            img = '"%s"' % img
-
-        if not img in self.images:
-            self.images[img] = '__image__%i' % self.nimage
-            self.nimage += 1
-
-        self.write_statement('scene bg %s' % self.images[img])
+        img = self.get_image(bg, 'bg')
+        self.write_statement('scene bg %s' % img)
 
         if bg.type == "STR":
             r = 2
@@ -420,7 +456,7 @@ class Translator(object):
         alias = self.parser.read("IDENTIFIER").value
         self.parser.read("COMMA")
         val = self.parser.read("STR")
-        self.write_statement('$ %s=%s' % (alias, self.escape(val)))
+        self.write_statement('$ %s=%s' % (alias, val.escaped))
 
     def cmd_textoff(self):
         self.write_statement('window hide')
@@ -448,13 +484,13 @@ class Translator(object):
         # STR
         track = self.parser.read(["STR", "IDENTIFIER", "VARSTR"])
 
-        self.write_statement('play sound %s' % self.escape(track).lower())
+        self.write_statement('play sound %s' % track.escaped.lower())
 
     def cmd_waveloop(self):
         # STR
         track = self.parser.read(["STR", "IDENTIFIER", "VARSTR"])
 
-        self.write_statement('play sound %s loop' % self.escape(track))
+        self.write_statement('play sound %s loop' % track.escaped)
 
     def cmd_wavestop(self):
         self.write_statement('stop sound')
