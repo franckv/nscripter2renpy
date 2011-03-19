@@ -86,6 +86,7 @@ class Translator(object):
         skipdone = {}
 
         self.write_statement('label start:')
+        self.indent += 1
         while True:
             token = self.parser.read()
             if token is None:
@@ -102,7 +103,6 @@ class Translator(object):
         self.write_statement('')
         self.write_statement('init 2:')
         self.indent += 1
-        self.write_statement('')
 
         for img in self.images.keys():
             if img.startswith('"#'):
@@ -121,7 +121,9 @@ class Translator(object):
         if token.type == "IDENTIFIER":
             self.read_command(token)
         elif token.type == "LABEL":
+            self.indent = 0
             self.write_statement('\nlabel %s:' % token.value.replace('*', ''))
+            self.indent = 1
         elif token.type == "TEXT":
             self.read_text(token)
         elif token.type == "SKIP":
