@@ -20,11 +20,19 @@ The following commands are currently (at least partially) supported:
   - print
   - resettimer
   - return
+  - select
+  - selgosub
   - setcursor
   - setwindow
+  - stop
   - stralias
+  - textoff
+  - texton
   - !w
+  - wait
   - waittimer
+  - wave
   - waveloop
   - wavestop
   - windoweffect
+

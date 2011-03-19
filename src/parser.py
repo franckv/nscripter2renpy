@@ -93,11 +93,17 @@ class Translator(object):
 
             for skipto in self.parser.skiplabel.keys():
                 if not skipto in skipdone and skipto <= token.line:
-                    self.write_statement('label %s:' % self.parser.skiplabel[skipto])
+                    self.write_statement('\nlabel %s:' % self.parser.skiplabel[skipto])
                     skipdone[skipto] = True
                     break
 
             self.handle_token(token)
+
+        self.write_statement('')
+        self.write_statement('init python:')
+        self.indent += 1
+        self.write_statement('menu = nvl_menu')
+        self.indent -= 1
 
         self.write_statement('')
         self.write_statement('init:')
@@ -123,7 +129,7 @@ class Translator(object):
         if token.type == "IDENTIFIER":
             self.read_command(token)
         elif token.type == "LABEL":
-            self.write_statement('label %s:' % token.value.replace('*', ''))
+            self.write_statement('\nlabel %s:' % token.value.replace('*', ''))
         elif token.type == "TEXT":
             self.read_text(token)
         elif token.type == "SKIP":
@@ -178,6 +184,18 @@ class Translator(object):
         skipto = token.line + token.value
         self.write_statement('jump %s' % self.parser.skiplabel[skipto])
 
+    def get_image(self, img):
+        val = img.value
+        if img.type == "COLOR":
+            val = '"%s"' % val
+
+        if not val in self.images:
+            self.images[val] = "__image__%i" % self.nimage
+            self.nimage += 1
+
+        return self.images[val]
+
+
     def read_command(self, token):
         if token.value == 'autoclick':
             self.cmd_autoclick()
@@ -215,12 +233,22 @@ class Translator(object):
             self.cmd_setcursor()
         elif token.value == 'setwindow':
             self.cmd_setwindow()
+        elif token.value == 'stop':
+            self.cmd_stop()
         elif token.value == 'stralias':
             self.cmd_stralias()
+        elif token.value == 'textoff':
+            self.cmd_textoff()
+        elif token.value == 'texton':
+            self.cmd_texton()
         elif token.value == '!w':
             self.cmd_w()
+        elif token.value == 'wait':
+            self.cmd_wait()
         elif token.value == 'waittimer':
             self.cmd_waittimer()
+        elif token.value == 'wave':
+            self.cmd_wave()
         elif token.value == 'waveloop':
             self.cmd_waveloop()
         elif token.value == 'wavestop':
@@ -242,15 +270,7 @@ class Translator(object):
         self.parser.read("COMMA")
         effect = self.parser.read(["NUM", "VARNUM"])
 
-        img = bg.value
-        if bg.type == "COLOR":
-            img = '"%s"' % img
-
-        if not img in self.images:
-            self.images[img] = "__image__%i" % self.nimage
-            self.nimage += 1
-
-        self.write_statement('scene bg %s' % self.images[img])
+        self.write_statement('scene bg %s' % self.get_image(bg))
 
     def cmd_br(self):
         self.write_statement('".{fast}{nw}"')
@@ -397,6 +417,10 @@ class Translator(object):
             self.parser.read("COMMA")
             self.parser.read("NUM")
 
+    def cmd_stop(self):
+        self.write_statement('stop music')
+        self.write_statement('stop sound')
+
     def cmd_stralias(self):
         # IDENTIFIER,STR
         alias = self.parser.read("IDENTIFIER").value
@@ -404,24 +428,42 @@ class Translator(object):
         val = self.parser.read("STR")
         self.write_statement('$ %s=%s' % (alias, self.escape(val)))
 
+    def cmd_textoff(self):
+        self.write_statement('window hide')
+
+    def cmd_texton(self):
+        self.write_statement('window show')
+
     def cmd_w(self):
         # NUM
         wait = self.parser.read("NUM")
         self.write_statement('$ renpy.pause(%s/1000)' % wait.value)
+
+    def cmd_wait(self):
+        # NUM
+        wait = self.parser.read("NUM")
+        self.write_statement('$ renpy.pause(%s/1000)' % wait.value)
+
 
     def cmd_waittimer(self):
         # NUM
         timer = self.parser.read(["NUM", "VARNUM"]).value.replace('%', '')
         self.write_statement('$ renpy.pause(%s/1000)' % timer)
 
+    def cmd_wave(self):
+        # STR
+        track = self.parser.read(["STR", "IDENTIFIER", "VARSTR"])
+
+        self.write_statement('play sound %s' % self.escape(track).lower())
+
     def cmd_waveloop(self):
         # STR
         track = self.parser.read(["STR", "IDENTIFIER", "VARSTR"])
 
-        self.write_statement('play music %s' % self.escape(track))
+        self.write_statement('play sound %s loop' % self.escape(track))
 
     def cmd_wavestop(self):
-        self.write_statement('stop music')
+        self.write_statement('stop sound')
 
     def cmd_windoweffect(self):
         # NUM[,NUM[,STR]]
