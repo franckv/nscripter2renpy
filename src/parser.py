@@ -100,6 +100,7 @@ class Translator(object):
             rh = 'ns_rh',
             rw = 'ns_rw',
             salpha = 'ns_salpha',
+            salphatrans = 'ns_salphatrans',
             spos = 'ns_spos',
             sprites = 'ns_sprites',
             xpos = 'ns_xpos',
@@ -380,9 +381,10 @@ class Translator(object):
         self.write_statement('$ %s["s%s"] = "%s"' % (self.vars['sprites'], id, img))
         self.write_statement('$ %s=int(%s*%s)' % (self.vars['xpos'], xpos.value, self.vars['rw']))
         self.write_statement('$ %s=int(%s*%s)' % (self.vars['ypos'], ypos.value, self.vars['rh']))
-        self.write_statement('$ %s=%s' % (self.vars['salpha'], alpha))
         self.write_statement('$ %s = Position(xanchor=0, yanchor=0, xpos=%s, ypos=%s)' % (self.vars['spos'], self.vars['xpos'], self.vars['ypos']))
-        self.write_statement('$ renpy.show(("s%s", %s["s%s"]), at_list=[%s])' % (id, self.vars['sprites'], id, self.vars['spos']))
+        self.write_statement('$ %s=%s' % (self.vars['salpha'], alpha))
+        self.write_statement('$ %s = Transform(alpha=%s/255.0)' % (self.vars['salphatrans'], self.vars['salpha']))
+        self.write_statement('$ renpy.show(("s%s", %s["s%s"]), at_list=[%s, %s])' % (id, self.vars['sprites'], id, self.vars['spos'], self.vars['salphatrans']))
 
     def cmd_mov(self):
         var = self.parser.read(["VARNUM", "VARSTR"])
@@ -413,10 +415,11 @@ class Translator(object):
 
         self.write_statement('$ %s+=%s' % (self.vars['xpos'], xpos.value))
         self.write_statement('$ %s+=%s' % (self.vars['ypos'], ypos.value))
-        self.write_statement('$ %s+=%s' % (self.vars['salpha'], alpha))
         self.write_statement('$ %s = Position(xanchor=0, yanchor=0, xpos=%s, ypos=%s)' % (self.vars['spos'], self.vars['xpos'], self.vars['ypos']))
+        self.write_statement('$ %s+=%s' % (self.vars['salpha'], alpha))
+        self.write_statement('$ %s = Transform(alpha=%s/255.0)' % (self.vars['salphatrans'], self.vars['salpha']))
         self.write_statement('$ renpy.hide("s%s")' % id)
-        self.write_statement('$ renpy.show(("s%s", %s["s%s"]), at_list=[%s])' % (id, self.vars['sprites'], id, self.vars['spos']))
+        self.write_statement('$ renpy.show(("s%s", %s["s%s"]), at_list=[%s, %s])' % (id, self.vars['sprites'], id, self.vars['spos'], self.vars['salphatrans']))
 
     def cmd_numalias(self):
         # IDENTIFIER,NUM
