@@ -316,7 +316,10 @@ class Translator(object):
     def cmd_csp(self):
         # NUM
         id = self.parser.read("NUM").value
-        self.write_statement('hide s%s' % id)
+        if id == '-1':
+            self.write_statement('$ for img in %s.keys(): renpy.hide(img)' % self.vars['sprites'])
+        else:
+            self.write_statement('hide s%s' % id)
 
     def cmd_gosub(self):
         # LABEL
