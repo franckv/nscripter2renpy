@@ -197,7 +197,6 @@ class Translator(object):
 
         return self.images[(pos, img)]
 
-
     def read_command(self, token):
         if token.value == 'autoclick':
             self.cmd_autoclick()
@@ -217,8 +216,12 @@ class Translator(object):
             self.cmd_inc()
         elif token.value == 'ld':
             self.cmd_ld()
+        elif token.value == 'lsp':
+            self.cmd_lsp()
         elif token.value == 'mov':
             self.cmd_mov()
+        elif token.value == 'msp':
+            self.cmd_msp()
         elif token.value == 'numalias':
             self.cmd_numalias()
         elif token.value == 'play':
@@ -306,16 +309,16 @@ class Translator(object):
         self.write_statement('jump %s' % label.replace('*', ''))
 
     def cmd_if(self):
-        self.write_statement("if", newline=False)
+        stmt = 'if '
         while True:
             op = self.parser.read(["NUM", "VARNUM", "LT", "LE", "GT", "GE", "EQ", "NEQ", "AND", "OR"], mandatory=False)
 
             if op is None:
                 break
 
-            self.write_statement(" %s" % op.escaped, newline=False)
+            stmt += op.escaped
 
-        self.write_statement(":")
+        self.write_statement("%s:" % stmt)
         self.indent += 1
         token = self.parser.read()
         self.handle_token(token)
@@ -330,11 +333,11 @@ class Translator(object):
         # IDENTIFIER,STR,NUM
         pos = self.parser.read("IDENTIFIER").value
         self.parser.read("COMMA")
-        char = self.parser.read(["STR", "VARSTR"])
+        sprite = self.parser.read(["STR", "VARSTR"])
         self.parser.read("COMMA")
         effect = self.parser.read(["NUM", "VARNUM"])
 
-        img = self.get_image(char, pos)
+        img = self.get_image(sprite, pos)
         loc = ''
         if pos == 'r':
             loc = ' at right2'
@@ -342,6 +345,29 @@ class Translator(object):
             loc = ' at left2'
 
         self.write_statement('show %s %s%s' % (pos, img, loc))
+
+    def cmd_lsp(self):
+        # NUM,STR,NUM,NUM,NUM
+        id = self.parser.read("NUM").value
+        self.parser.read("COMMA")
+        sprite = self.parser.read(["STR", "VARSTR"])
+        self.parser.read("COMMA")
+        xpos = self.parser.read(["NUM"])
+        self.parser.read("COMMA")
+        ypos = self.parser.read(["NUM"])
+        if self.parser.read("COMMA", mandatory=False) is not None:
+            alpha = self.parser.read(["NUM"]).value
+        else:
+            alpha = '0'
+
+        img = self.get_image(sprite, "s%s" % id)
+
+        self.write_statement('$ sprites["s%s"] = "%s"' % (id, img))
+        self.write_statement('$ xpos=int(%s*rw)' % xpos.value)
+        self.write_statement('$ ypos=int(%s*rh)' % ypos.value)
+        self.write_statement('$ salpha=%s' % alpha)
+        self.write_statement('$ spos = Position(xanchor=0, yanchor=0, xpos=xpos, ypos=ypos)')
+        self.write_statement('$ renpy.show(("s%s", sprites["s%s"]), at_list=[spos])' % (id, id))
 
     def cmd_mov(self):
         var = self.parser.read(["VARNUM", "VARSTR"])
@@ -357,6 +383,25 @@ class Translator(object):
         self.variables[var].append(val)
 
         self.write_statement('$ %s=%s' % (var.escaped, val.escaped)) 
+
+    def cmd_msp(self):
+        # NUM,NUM,NUM,NUM
+        id = self.parser.read("NUM").value
+        self.parser.read("COMMA")
+        xpos = self.parser.read(["NUM"])
+        self.parser.read("COMMA")
+        ypos = self.parser.read(["NUM"])
+        if self.parser.read("COMMA", mandatory=False) is not None:
+            alpha = self.parser.read(["NUM"]).value
+        else:
+            alpha = '0'
+
+        self.write_statement('$ xpos+=%s' % xpos.value)
+        self.write_statement('$ ypos+=%s' % ypos.value)
+        self.write_statement('$ salpha+=%s' % alpha)
+        self.write_statement('$ spos = Position(xanchor=0, yanchor=0, xpos=xpos, ypos=ypos)')
+        self.write_statement('$ renpy.hide("s%s")' % id)
+        self.write_statement('$ renpy.show(("s%s", sprites["s%s"]), at_list=[spos])' % (id, id))
 
     def cmd_numalias(self):
         # IDENTIFIER,NUM

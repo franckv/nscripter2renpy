@@ -14,8 +14,9 @@ The following commands are currently (at least partially) supported:
   - if
   - inc
   - ld
-  - skip
+  - lsp
   - mov
+  - msp
   - numalias
   - play
   - playstop
@@ -26,6 +27,7 @@ The following commands are currently (at least partially) supported:
   - selgosub
   - setcursor
   - setwindow
+  - skip
   - stop
   - stralias
   - textoff
