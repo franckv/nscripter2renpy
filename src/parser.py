@@ -11,6 +11,8 @@ class Parser(object):
         self.current = 0
         self.skiplabel = {}
         self.nskip = 0
+        self.numaliases = {}
+        self.straliases = {}
 
         self.rules = [
             ("BLANK", r"[ \t\r\n]+"),
@@ -50,23 +52,36 @@ class Parser(object):
         lex = Lexer(self.rules, case_sensitive=False)
         self.tokens = [token for token in lex.scan(content) if token is not None and token.type != "COMMENT"]
 
-        # Preprocessing:
-        while True:
-            token = self.read()
-            if token is None:
-                break
-
         self.current = 0
 
     def escape(self, token):
         if token.type == "STR":
             return token.value.replace('\\', '/')
+        elif token.type == "IDENTIFIER":
+            if token.value in self.numaliases:
+                return 'ns_na_%s' % token.value
+            elif token.value in self.straliases:
+                return 'ns_sa_%s' % token.value
+            else:
+                return token.value
         elif token.type == "VARNUM":
-            return token.value.replace('%', '')
+            var = token.value.replace('%', '')
+            try:
+                return int(var)
+            except ValueError:
+                return 'ns_na_%s' % var
         elif token.type == "VARSTR":
-            return token.value.replace('$', '')
+            var = token.value.replace('$', '')
+            try:
+                return int(var)
+            except ValueError:
+                return 'ns_na_%s' % var
         elif token.type == "COLOR":
             return '"%s"' % token.value
+        elif token.type == 'AND':
+            return 'and'
+        elif token.type == 'OR':
+            return 'or'
         else:
             return token.value
 
@@ -97,12 +112,14 @@ class Translator(object):
         self.vars = dict(
             autoclick = 'ns_autoclick',
             images_size = 'ns_images_size',
+            numvars = 'ns_numvars',
             rh = 'ns_rh',
             rw = 'ns_rw',
             salpha = 'ns_salpha',
             salphatrans = 'ns_salphatrans',
             spos = 'ns_spos',
             sprites = 'ns_sprites',
+            strvars = 'ns_strvars',
             xpos = 'ns_xpos',
             ypos = 'ns_ypos',
         )
@@ -141,16 +158,15 @@ class Translator(object):
                     if imgDef != '':
                         imgDef += ', '
                     if val.value.startswith('":a;'):
-                        imgDef += '\'%s==%s\', alpha_blend(%s, "%s")' % (img.escaped, val.escaped, val.escaped.replace(':a;', '').lower(), self.images[(pos, img)])
+                        imgDef += '\'%s==%s\', alpha_blend(%s, "%s")' % (self.get_var(img), val.escaped, val.escaped.replace(':a;', '').lower(), self.images[(pos, img)])
                     else:
-                        imgDef += '\'%s==%s\', scale(%s)' % (img.escaped, val.escaped, val.escaped.lower())
+                        imgDef += '\'%s==%s\', scale(%s)' % (self.get_var(img), val.escaped, val.escaped.lower())
                 self.write_statement('image %s %s = ConditionSwitch(%s)' %  (pos, self.images[(pos, img)], imgDef))
             else:
                 if img.value.startswith('":a;'):
                     self.write_statement('image %s %s = alpha_blend(%s, "%s")' % (pos, self.images[(pos, img)], img.escaped.replace(':a;', '').lower(), self.images[(pos, img)]))
                 else:
                     self.write_statement('image %s %s = scale(%s)' % (pos, self.images[(pos, img)], img.escaped.lower()))
-
 
     def handle_token(self, token):
         if token.type == "IDENTIFIER":
@@ -210,6 +226,14 @@ class Translator(object):
 
         return self.images[(pos, img)]
 
+    def get_var(self, token):
+        if token.type == "VARNUM":
+            return '%s[%s]' % (self.vars['numvars'], token.escaped)
+        elif token.type == "VARSTR":
+            return '%s[%s]' % (self.vars['strvars'], token.escaped)
+        else:
+            return token.escaped
+
     def read_command(self, token):
         if token.value == 'autoclick':
             self.cmd_autoclick()
@@ -245,6 +269,12 @@ class Translator(object):
             self.cmd_playstop()
         elif token.value == 'print':
             self.cmd_print()
+        elif token.value == 'quakex':
+            self.cmd_quakex()
+        elif token.value == 'quakey':
+            self.cmd_quakey()
+        elif token.value == 'repaint':
+            self.cmd_repaint()
         elif token.value == 'resettimer':
             self.cmd_resettimer()
         elif token.value == 'return':
@@ -332,14 +362,18 @@ class Translator(object):
         self.write_statement('jump %s' % label.replace('*', ''))
 
     def cmd_if(self):
-        stmt = 'if '
+        stmt = 'if'
         while True:
             op = self.parser.read(["NUM", "VARNUM", "LT", "LE", "GT", "GE", "EQ", "NEQ", "AND", "OR"], mandatory=False)
 
             if op is None:
                 break
 
-            stmt += op.escaped
+            stmt += ' '
+            if op.type == "VARNUM":
+                stmt += self.get_var(op)
+            else:
+                stmt += op.escaped
 
         self.write_statement("%s:" % stmt)
         self.indent += 1
@@ -350,7 +384,7 @@ class Translator(object):
     def cmd_inc(self):
         # VARNUM
         var = self.parser.read("VARNUM")
-        self.write_statement('$ %s+=1' % var.escaped)
+        self.write_statement('$ %s+=1' % self.get_var(var))
 
     def cmd_ld(self):
         # IDENTIFIER,STR,NUM
@@ -402,7 +436,7 @@ class Translator(object):
             self.variables[var] = []
         self.variables[var].append(val)
 
-        self.write_statement('$ %s=%s' % (var.escaped, val.escaped)) 
+        self.write_statement('$ %s=%s' % (self.get_var(var), self.get_var(val))) 
 
     def cmd_msp(self):
         # NUM,NUM,NUM,NUM
@@ -426,10 +460,13 @@ class Translator(object):
 
     def cmd_numalias(self):
         # IDENTIFIER,NUM
-        alias = self.parser.read("IDENTIFIER")
+        alias = self.parser.read("IDENTIFIER").value
         self.parser.read("COMMA")
-        val = self.parser.read("NUM")
-
+        val = self.parser.read("NUM").value
+        
+        self.parser.numaliases[alias] = val
+        self.write_statement('$ ns_na_%s = %s' % (alias, val))
+        
     def cmd_play(self):
         # STR
         track = self.parser.read("STR").value.replace('*', '').replace('"', '')
@@ -445,6 +482,25 @@ class Translator(object):
     def cmd_print(self):
         # NUM
         effect = self.parser.read("NUM", "VARNUM")
+
+    def cmd_quakex(self):
+        # NUM, NUM
+        amp = self.parser.read("NUM")
+        self.parser.read("COMMA")
+        dur = self.parser.read("NUM")
+
+        self.write_statement('with hpunch')
+
+    def cmd_quakey(self):
+        # NUM, NUM
+        amp = self.parser.read("NUM")
+        self.parser.read("COMMA")
+        dur = self.parser.read("NUM")
+
+        self.write_statement('with vpunch')
+
+    def cmd_repaint(self):
+        pass
 
     def cmd_resettimer(self):
         pass
@@ -521,8 +577,10 @@ class Translator(object):
         # IDENTIFIER,STR
         alias = self.parser.read("IDENTIFIER").value
         self.parser.read("COMMA")
-        val = self.parser.read("STR")
-        self.write_statement('$ %s=%s' % (alias, val.escaped))
+        val = self.parser.read("STR").value
+
+        self.parser.straliases[alias] = val
+        self.write_statement('$ ns_sa_%s = %s' % (alias, val))
 
     def cmd_textoff(self):
         self.write_statement('window hide')
@@ -543,20 +601,18 @@ class Translator(object):
 
     def cmd_waittimer(self):
         # NUM
-        timer = self.parser.read(["NUM", "VARNUM"]).value.replace('%', '')
-        self.write_statement('$ renpy.pause(%s/1000.0)' % timer)
+        timer = self.parser.read(["NUM", "VARNUM"])
+        self.write_statement('$ renpy.pause(%s/1000.0)' % self.get_var(timer))
 
     def cmd_wave(self):
         # STR
         track = self.parser.read(["STR", "IDENTIFIER", "VARSTR"])
-
-        self.write_statement('play sound %s' % track.escaped.lower())
+        self.write_statement('play sound %s' % self.get_var(track).lower())
 
     def cmd_waveloop(self):
         # STR
         track = self.parser.read(["STR", "IDENTIFIER", "VARSTR"])
-
-        self.write_statement('play sound %s loop' % track.escaped)
+        self.write_statement('play sound %s loop' % self.get_var(track))
 
     def cmd_wavestop(self):
         self.write_statement('stop sound')

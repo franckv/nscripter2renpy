@@ -13,6 +13,8 @@ init 1:
     ns_rh = None
     ns_sprites = {}
     ns_images_size = {}
+    ns_numvars = [0,] * 4096
+    ns_strvars = ["",] * 4096
 
     def scale(img):
       global ns_rw, ns_rh
