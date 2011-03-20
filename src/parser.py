@@ -128,13 +128,13 @@ class Translator(object):
                     if imgDef != '':
                         imgDef += ', '
                     if val.value.startswith('":a;'):
-                        imgDef += '\'%s==%s\', alpha_blend(%s)' % (img.escaped, val.escaped, val.escaped.replace(':a;', '').lower())
+                        imgDef += '\'%s==%s\', alpha_blend(%s, "%s")' % (img.escaped, val.escaped, val.escaped.replace(':a;', '').lower(), self.images[(pos, img)])
                     else:
                         imgDef += '\'%s==%s\', scale(%s)' % (img.escaped, val.escaped, val.escaped.lower())
                 self.write_statement('image %s %s = ConditionSwitch(%s)' %  (pos, self.images[(pos, img)], imgDef))
             else:
                 if img.value.startswith('":a;'):
-                    self.write_statement('image %s %s = alpha_blend(%s)' % (pos, self.images[(pos, img)], img.escaped.replace(':a;', '').lower()))
+                    self.write_statement('image %s %s = alpha_blend(%s, "%s")' % (pos, self.images[(pos, img)], img.escaped.replace(':a;', '').lower(), self.images[(pos, img)]))
                 else:
                     self.write_statement('image %s %s = scale(%s)' % (pos, self.images[(pos, img)], img.escaped.lower()))
 
@@ -338,13 +338,9 @@ class Translator(object):
         effect = self.parser.read(["NUM", "VARNUM"])
 
         img = self.get_image(sprite, pos)
-        loc = ''
-        if pos == 'r':
-            loc = ' at right2'
-        elif pos == 'l':
-            loc = ' at left2'
 
-        self.write_statement('show %s %s%s' % (pos, img, loc))
+        self.write_statement('$ xpos=get_xpos("%s", "%s")' % (img, pos))
+        self.write_statement('show %s %s at Position(xanchor=0, yalign=1.0, xpos=xpos)' % (pos, img))
 
     def cmd_lsp(self):
         # NUM,STR,NUM,NUM,NUM
