@@ -530,18 +530,18 @@ class Translator(object):
     def cmd_w(self):
         # NUM
         wait = self.parser.read("NUM")
-        self.write_statement('$ renpy.pause(%s/1000)' % wait.value)
+        self.write_statement('$ renpy.pause(%s/1000.0)' % wait.value)
 
     def cmd_wait(self):
         # NUM
         wait = self.parser.read("NUM")
-        self.write_statement('$ renpy.pause(%s/1000)' % wait.value)
+        self.write_statement('$ renpy.pause(%s/1000.0)' % wait.value)
 
 
     def cmd_waittimer(self):
         # NUM
         timer = self.parser.read(["NUM", "VARNUM"]).value.replace('%', '')
-        self.write_statement('$ renpy.pause(%s/1000)' % timer)
+        self.write_statement('$ renpy.pause(%s/1000.0)' % timer)
 
     def cmd_wave(self):
         # STR
