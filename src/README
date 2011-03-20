@@ -9,6 +9,7 @@ The following commands are currently (at least partially) supported:
   - bg
   - br
   - cl
+  - csp
   - goto
   - gosub
   - if

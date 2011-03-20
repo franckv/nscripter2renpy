@@ -94,6 +94,18 @@ class Translator(object):
         self.images = {}
         self.variables = {}
         self.indent = 0
+        self.vars = dict(
+            autoclick = 'ns_autoclick',
+            images_size = 'ns_images_size',
+            rh = 'ns_rh',
+            rw = 'ns_rw',
+            salpha = 'ns_salpha',
+            spos = 'ns_spos',
+            sprites = 'ns_sprites',
+            xpos = 'ns_xpos',
+            ypos = 'ns_ypos',
+        )
+
 
     def translate(self):
         skipdone = {}
@@ -167,8 +179,8 @@ class Translator(object):
         text = token.value.replace('`', '')
 
         text = text + '{nw}'
-        text = text.replace('@', '{w=%(autoclick)d}')
-        text = text.replace('\\', '{w=%(autoclick)d}')
+        text = text.replace('@', '{w=%%(%s)d}' % self.vars['autoclick'])
+        text = text.replace('\\', '{w=%%(%s)d}' % self.vars['autoclick'])
         text = self.escape_text(text)
         self.write_statement('"%s"' % text)
         if '\\' in token.value:
@@ -206,6 +218,8 @@ class Translator(object):
             self.cmd_br()
         elif token.value == 'cl':
             self.cmd_cl()
+        elif token.value == 'csp':
+            self.cmd_csp()
         elif token.value == 'goto':
             self.cmd_goto()
         elif token.value == 'gosub':
@@ -272,7 +286,7 @@ class Translator(object):
         autoclick = self.parser.read("NUM").value
         if autoclick == '0':
             autoclick = '3600000'
-        self.write_statement('$ autoclick=%s/1000' % autoclick)
+        self.write_statement('$ %s=%s/1000' % (self.vars['autoclick'], autoclick))
 
     def cmd_bg(self):
         bg = self.parser.read(["STR", "COLOR", "VARSTR"])
@@ -297,6 +311,11 @@ class Translator(object):
             self.write_statement('hide l')
         else:
             self.write_statement('hide %s' % pos)
+
+    def cmd_csp(self):
+        # NUM
+        id = self.parser.read("NUM").value
+        self.write_statement('hide s%s' % id)
 
     def cmd_gosub(self):
         # LABEL
@@ -339,8 +358,8 @@ class Translator(object):
 
         img = self.get_image(sprite, pos)
 
-        self.write_statement('$ xpos=get_xpos("%s", "%s")' % (img, pos))
-        self.write_statement('show %s %s at Position(xanchor=0, yalign=1.0, xpos=xpos)' % (pos, img))
+        self.write_statement('$ %s=get_xpos("%s", "%s")' % (self.vars['xpos'], img, pos))
+        self.write_statement('show %s %s at Position(xanchor=0, yalign=1.0, xpos=%s)' % (pos, img, self.vars['xpos']))
 
     def cmd_lsp(self):
         # NUM,STR,NUM,NUM,NUM
@@ -358,12 +377,12 @@ class Translator(object):
 
         img = self.get_image(sprite, "s%s" % id)
 
-        self.write_statement('$ sprites["s%s"] = "%s"' % (id, img))
-        self.write_statement('$ xpos=int(%s*rw)' % xpos.value)
-        self.write_statement('$ ypos=int(%s*rh)' % ypos.value)
-        self.write_statement('$ salpha=%s' % alpha)
-        self.write_statement('$ spos = Position(xanchor=0, yanchor=0, xpos=xpos, ypos=ypos)')
-        self.write_statement('$ renpy.show(("s%s", sprites["s%s"]), at_list=[spos])' % (id, id))
+        self.write_statement('$ %s["s%s"] = "%s"' % (self.vars['sprites'], id, img))
+        self.write_statement('$ %s=int(%s*%s)' % (self.vars['xpos'], xpos.value, self.vars['rw']))
+        self.write_statement('$ %s=int(%s*%s)' % (self.vars['ypos'], ypos.value, self.vars['rh']))
+        self.write_statement('$ %s=%s' % (self.vars['salpha'], alpha))
+        self.write_statement('$ %s = Position(xanchor=0, yanchor=0, xpos=%s, ypos=%s)' % (self.vars['spos'], self.vars['xpos'], self.vars['ypos']))
+        self.write_statement('$ renpy.show(("s%s", %s["s%s"]), at_list=[%s])' % (id, self.vars['sprites'], id, self.vars['spos']))
 
     def cmd_mov(self):
         var = self.parser.read(["VARNUM", "VARSTR"])
@@ -392,12 +411,12 @@ class Translator(object):
         else:
             alpha = '0'
 
-        self.write_statement('$ xpos+=%s' % xpos.value)
-        self.write_statement('$ ypos+=%s' % ypos.value)
-        self.write_statement('$ salpha+=%s' % alpha)
-        self.write_statement('$ spos = Position(xanchor=0, yanchor=0, xpos=xpos, ypos=ypos)')
+        self.write_statement('$ %s+=%s' % (self.vars['xpos'], xpos.value))
+        self.write_statement('$ %s+=%s' % (self.vars['ypos'], ypos.value))
+        self.write_statement('$ %s+=%s' % (self.vars['salpha'], alpha))
+        self.write_statement('$ %s = Position(xanchor=0, yanchor=0, xpos=%s, ypos=%s)' % (self.vars['spos'], self.vars['xpos'], self.vars['ypos']))
         self.write_statement('$ renpy.hide("s%s")' % id)
-        self.write_statement('$ renpy.show(("s%s", sprites["s%s"]), at_list=[spos])' % (id, id))
+        self.write_statement('$ renpy.show(("s%s", %s["s%s"]), at_list=[%s])' % (id, self.vars['sprites'], id, self.vars['spos']))
 
     def cmd_numalias(self):
         # IDENTIFIER,NUM

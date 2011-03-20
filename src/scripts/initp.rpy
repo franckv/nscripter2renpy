@@ -8,32 +8,30 @@ init 1:
   python:
     menu = nvl_menu
     narrator = Character(None, kind=nvl)
-    autoclick = 3600
-    rw = None
-    rh = None
-    widhto = None
-    heigho = None
-    sprites = {}
-    images_size = {}
+    ns_autoclick = 3600
+    ns_rw = None
+    ns_rh = None
+    ns_sprites = {}
+    ns_images_size = {}
 
     def scale(img):
-      global rw, rh
-      if rw is None:
+      global ns_rw, ns_rh
+      if ns_rw is None:
           (w, h) = Image(img).load().get_size()
-          rw = config.screen_width / float(w)
-          rh = config.screen_height / float(h)
-      return im.FactorScale(img, rw, rh)
+          ns_rw = config.screen_width / float(w)
+          ns_rh = config.screen_height / float(h)
+      return im.FactorScale(img, ns_rw, ns_rh)
   
     def alpha_blend(img, id):
-      global rw, rh, images_size
+      global ns_rw, ns_rh, ns_images_size
       (w, h) = Image(img).load().get_size()
-      images_size[id] = (w, h)
+      ns_images_size[id] = (w, h)
       i = im.Crop(img, (0, 0, w/2, h))
       m = im.MatrixColor(im.Crop(img, (w/2, 0, w/2, h)), im.matrix.invert())
-      return im.FactorScale(im.AlphaMask(i, m), rw, rh)
+      return im.FactorScale(im.AlphaMask(i, m), ns_rw, ns_rh)
 
     def get_xpos(id, pos):
-      global rw, rh, images_size
+      global ns_rw, ns_rh, ns_images_size
       if pos == 'l':
         n = 1
       elif pos == 'c':
@@ -41,7 +39,7 @@ init 1:
       elif pos =='r':
         n = 3
 
-      (w, h) = images_size[id]
-      xpos = int(config.screen_width * n / 4 - w *rw / 4)
+      (w, h) = ns_images_size[id]
+      xpos = int(config.screen_width * n / 4 - w * ns_rw / 4)
 
       return xpos
