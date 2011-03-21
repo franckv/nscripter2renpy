@@ -1,5 +1,6 @@
 A tool that converts nscripter scripts to renpy.
-The script must be decompressed before it can be converted. Graphics and music must be extracted to the renpy game directory using sardev or nsadev.
+The script must be decompressed before it can be converted.
+Graphics and music must be extracted to the renpy game directory using sardec or nsadec.
 
 Usage:
     python main.py -f script.txt > script.rpy
