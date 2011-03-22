@@ -85,19 +85,25 @@ class Parser(object):
         else:
             return token.value
 
-    def read(self, tokenType=None, mandatory=True):
+    def read(self, expectedType=None, mandatory=True):
         if self.current >= len(self.tokens):
             return None
 
         token = self.tokens[self.current]
+        tokenType = token.type
+        if tokenType == 'IDENTIFIER':
+            if token.value in self.numaliases:
+                tokenType == 'NUMALIAS'
+            elif token.value in self.straliases:
+                tokenType == 'STRALIAS'
 
-        if tokenType is None or (type(tokenType).__name__=='list' and token.type in tokenType) or token.type == tokenType:
+        if expectedType is None or (type(expectedType).__name__=='list' and tokenType in expectedType) or tokenType == expectedType:
             self.current += 1
             token.escaped = self.escape(token)
             return token
         else:
             if mandatory:
-                raise SyntaxError("Expected %s on %i got %s (%s)" % (tokenType, token.line, token.type, token.value))
+                raise SyntaxError("Expected %s on %i got %s (%s)" % (expectedType, token.line, tokenType, token.value))
             else:
                 return None
 
@@ -323,10 +329,10 @@ class Translator(object):
         autoclick = self.parser.read("NUM").value
 
     def cmd_bg(self):
-        bg = self.parser.read(["STR", "COLOR", "VARSTR"])
+        bg = self.parser.read(["STR", "COLOR", "VARSTR", "STRALIAS"])
         comma = self.parser.read("COMMA", mandatory=False)
         if comma is not None:
-            effect = self.parser.read(["NUM", "VARNUM", "IDENTIFIER"])
+            effect = self.parser.read(["NUM", "VARNUM", "NUMALIAS"])
 
         img = self.get_image(bg, 'bg')
         self.write_statement('scene bg %s' % img)
@@ -338,7 +344,7 @@ class Translator(object):
         # IDENTIFIER,NUM
         pos = self.parser.read("IDENTIFIER").value
         self.parser.read("COMMA")
-        effect = self.parser.read(["NUM", "VARNUM"])
+        effect = self.parser.read(["NUM", "VARNUM", "NUMALIAS"])
 
         if pos == 'a':
             self.write_statement('hide r')
@@ -374,7 +380,7 @@ class Translator(object):
     def cmd_if(self):
         stmt = 'if'
         while True:
-            op = self.parser.read(["NUM", "VARNUM", "LT", "LE", "GT", "GE", "EQ", "NEQ", "AND", "OR"], mandatory=False)
+            op = self.parser.read(["NUM", "VARNUM", "NUMALIAS", "LT", "LE", "GT", "GE", "EQ", "NEQ", "AND", "OR"], mandatory=False)
 
             if op is None:
                 break
@@ -400,9 +406,9 @@ class Translator(object):
         # IDENTIFIER,STR,NUM
         pos = self.parser.read("IDENTIFIER").value
         self.parser.read("COMMA")
-        sprite = self.parser.read(["STR", "VARSTR"])
+        sprite = self.parser.read(["STR", "VARSTR", "STRALIAS"])
         self.parser.read("COMMA")
-        effect = self.parser.read(["NUM", "VARNUM"])
+        effect = self.parser.read(["NUM", "VARNUM", "NUMALIAS"])
 
         img = self.get_image(sprite, pos)
 
@@ -411,13 +417,13 @@ class Translator(object):
 
     def cmd_lsp(self):
         # NUM,STR,NUM,NUM,NUM
-        id = self.parser.read(["NUM", "VARNUM", "IDENTIFIER"]).value
+        id = self.parser.read(["NUM", "VARNUM", "NUMALIAS"]).value
         self.parser.read("COMMA")
-        sprite = self.parser.read(["STR", "VARSTR", "IDENTIFIER"])
+        sprite = self.parser.read(["STR", "VARSTR", "STRALIAS"])
         self.parser.read("COMMA")
-        xpos = self.parser.read(["NUM", "VARNUM"])
+        xpos = self.parser.read(["NUM", "VARNUM", "NUMALIAS"])
         self.parser.read("COMMA")
-        ypos = self.parser.read(["NUM", "VARNUM"])
+        ypos = self.parser.read(["NUM", "VARNUM", "NUMALIAS"])
         if self.parser.read("COMMA", mandatory=False) is not None:
             alpha = self.parser.read(["NUM"]).value
         else:
@@ -438,9 +444,9 @@ class Translator(object):
         self.parser.read("COMMA")
 
         if var.type == "VARNUM":
-            val = self.parser.read(["NUM", "VARNUM", "IDENTIFIER"])
+            val = self.parser.read(["NUM", "VARNUM", "NUMALIAS"])
         else:
-            val = self.parser.read(["STR", "VARSTR", "IDENTIFIER"])
+            val = self.parser.read(["STR", "VARSTR", "STRALIAS"])
 
         if not var in self.variables:
             self.variables[var] = []
@@ -498,7 +504,7 @@ class Translator(object):
 
     def cmd_print(self):
         # NUM
-        effect = self.parser.read(["NUM", "VARNUM", "IDENTIFIER"])
+        effect = self.parser.read(["NUM", "VARNUM", "NUMALIAS"])
 
     def cmd_quakex(self):
         # NUM, NUM
@@ -626,17 +632,17 @@ class Translator(object):
 
     def cmd_waittimer(self):
         # NUM
-        timer = self.parser.read(["NUM", "VARNUM"])
+        timer = self.parser.read(["NUM", "VARNUM", "NUMALIAS"])
         self.write_statement('$ renpy.pause(%s/1000.0)' % self.get_var(timer))
 
     def cmd_wave(self):
         # STR
-        track = self.parser.read(["STR", "IDENTIFIER", "VARSTR"])
+        track = self.parser.read(["STR", "STRALIAS", "VARSTR"])
         self.write_statement('play sound %s' % self.get_var(track).lower())
 
     def cmd_waveloop(self):
         # STR
-        track = self.parser.read(["STR", "IDENTIFIER", "VARSTR"])
+        track = self.parser.read(["STR", "STRALIAS", "VARSTR"])
         self.write_statement('play sound %s loop' % self.get_var(track))
 
     def cmd_wavestop(self):
