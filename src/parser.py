@@ -59,9 +59,9 @@ class Parser(object):
             return token.value.replace('\\', '/')
         elif token.type == "IDENTIFIER":
             if token.value in self.numaliases:
-                return 'ns_na_%s' % token.value
+                return 'ns_state.numaliases["%s"]' % token.value
             elif token.value in self.straliases:
-                return 'ns_sa_%s' % token.value
+                return 'ns_state.straliases["%s"]' % token.value
             else:
                 return token.value
         elif token.type == "VARNUM":
@@ -69,13 +69,13 @@ class Parser(object):
             try:
                 return int(var)
             except ValueError:
-                return 'ns_na_%s' % var
+                return 'ns_state.numaliases["%s"]' % var
         elif token.type == "VARSTR":
             var = token.value.replace('$', '')
             try:
                 return int(var)
             except ValueError:
-                return 'ns_na_%s' % var
+                return 'ns_state.numaliases["%s"]' % var
         elif token.type == "COLOR":
             return '"%s"' % token.value
         elif token.type == 'AND':
@@ -97,7 +97,7 @@ class Parser(object):
             return token
         else:
             if mandatory:
-                raise SyntaxError("Expecting %s on %i got %s" % (tokenType, token.line, token.type))
+                raise SyntaxError("Expected %s on %i got %s (%s)" % (tokenType, token.line, token.type, token.value))
             else:
                 return None
 
@@ -109,27 +109,19 @@ class Translator(object):
         self.images = {}
         self.variables = {}
         self.indent = 0
-        self.vars = dict(
-            autoclick = 'ns_autoclick',
-            images_size = 'ns_images_size',
-            numvars = 'ns_numvars',
-            rh = 'ns_rh',
-            rw = 'ns_rw',
-            salpha = 'ns_salpha',
-            salphatrans = 'ns_salphatrans',
-            spos = 'ns_spos',
-            sprites = 'ns_sprites',
-            strvars = 'ns_strvars',
-            xpos = 'ns_xpos',
-            ypos = 'ns_ypos',
-        )
-
 
     def translate(self):
         skipdone = {}
 
+        self.write_statement('label after_load:')
+        self.indent += 1
+        self.write_statement('$ init_vars(False)')
+        self.write_statement('return\n')
+        self.indent = 0
+
         self.write_statement('label start:')
         self.indent += 1
+        self.write_statement('$ init_vars(True)')
         while True:
             token = self.parser.read()
             if token is None:
@@ -143,6 +135,7 @@ class Translator(object):
 
             self.handle_token(token)
 
+        self.indent = 0
         self.write_statement('')
         self.write_statement('init 2:')
         self.indent += 1
@@ -158,15 +151,15 @@ class Translator(object):
                     if imgDef != '':
                         imgDef += ', '
                     if val.value.startswith('":a;'):
-                        imgDef += '\'%s==%s\', alpha_blend(%s, "%s")' % (self.get_var(img), val.escaped, val.escaped.replace(':a;', '').lower(), self.images[(pos, img)])
+                        imgDef += '\'%s==%s\', alpha_blend(ns_state_init, %s, "%s")' % (self.get_var(img), val.escaped, val.escaped.replace(':a;', '').lower(), self.images[(pos, img)])
                     else:
-                        imgDef += '\'%s==%s\', scale(%s)' % (self.get_var(img), val.escaped, val.escaped.lower())
+                        imgDef += '\'%s==%s\', scale(ns_state_init, %s)' % (self.get_var(img), val.escaped, val.escaped.lower())
                 self.write_statement('image %s %s = ConditionSwitch(%s)' %  (pos, self.images[(pos, img)], imgDef))
             else:
                 if img.value.startswith('":a;'):
-                    self.write_statement('image %s %s = alpha_blend(%s, "%s")' % (pos, self.images[(pos, img)], img.escaped.replace(':a;', '').lower(), self.images[(pos, img)]))
+                    self.write_statement('image %s %s = alpha_blend(ns_state_init, %s, "%s")' % (pos, self.images[(pos, img)], img.escaped.replace(':a;', '').lower(), self.images[(pos, img)]))
                 else:
-                    self.write_statement('image %s %s = scale(%s)' % (pos, self.images[(pos, img)], img.escaped.lower()))
+                    self.write_statement('image %s %s = scale(ns_state_init, %s)' % (pos, self.images[(pos, img)], img.escaped.lower()))
 
     def handle_token(self, token):
         if token.type == "IDENTIFIER":
@@ -196,8 +189,9 @@ class Translator(object):
         text = token.value.replace('`', '')
 
         text = text + '{nw}'
-        text = text.replace('@', '{w=%%(%s)d}' % self.vars['autoclick'])
-        text = text.replace('\\', '{w=%%(%s)d}' % self.vars['autoclick'])
+        text = text.replace('@', '{w}')
+        text = text.replace('\\', '{w}')
+        text = text.replace('{w}{nw}', '')
         text = self.escape_text(text)
         self.write_statement('"%s"' % text)
         if '\\' in token.value:
@@ -228,9 +222,9 @@ class Translator(object):
 
     def get_var(self, token):
         if token.type == "VARNUM":
-            return '%s[%s]' % (self.vars['numvars'], token.escaped)
+            return 'ns_state.numvars[%s]' % token.escaped
         elif token.type == "VARSTR":
-            return '%s[%s]' % (self.vars['strvars'], token.escaped)
+            return 'ns_state.strvars[%s]' % token.escaped
         else:
             return token.escaped
 
@@ -245,6 +239,10 @@ class Translator(object):
             self.cmd_cl()
         elif token.value == 'csp':
             self.cmd_csp()
+        elif token.value == 'filelog':
+            self.cmd_filelog()
+        elif token.value == 'globalon':
+            self.cmd_globalon()
         elif token.value == 'goto':
             self.cmd_goto()
         elif token.value == 'gosub':
@@ -261,6 +259,10 @@ class Translator(object):
             self.cmd_mov()
         elif token.value == 'msp':
             self.cmd_msp()
+        elif token.value == 'nsa':
+            self.cmd_nsa()
+        elif token.value == 'nsadir':
+            self.cmd_nsadir()
         elif token.value == 'numalias':
             self.cmd_numalias()
         elif token.value == 'play':
@@ -279,6 +281,10 @@ class Translator(object):
             self.cmd_resettimer()
         elif token.value == 'return':
             self.cmd_return()
+        elif token.value == '!s':
+            self.cmd_s()
+        elif token.value == '!sd':
+            self.cmd_sd()
         elif token.value == 'select':
             self.cmd_select()
         elif token.value == 'selgosub':
@@ -315,20 +321,18 @@ class Translator(object):
     def cmd_autoclick(self):
         # NUM
         autoclick = self.parser.read("NUM").value
-        if autoclick == '0':
-            autoclick = '3600000'
-        self.write_statement('$ %s=%s/1000' % (self.vars['autoclick'], autoclick))
 
     def cmd_bg(self):
         bg = self.parser.read(["STR", "COLOR", "VARSTR"])
-        self.parser.read("COMMA")
-        effect = self.parser.read(["NUM", "VARNUM"])
+        comma = self.parser.read("COMMA", mandatory=False)
+        if comma is not None:
+            effect = self.parser.read(["NUM", "VARNUM", "IDENTIFIER"])
 
         img = self.get_image(bg, 'bg')
         self.write_statement('scene bg %s' % img)
 
     def cmd_br(self):
-        self.write_statement('".{fast}{nw}"')
+        self.write_statement('"{fast}{nw}"')
 
     def cmd_cl(self):
         # IDENTIFIER,NUM
@@ -347,9 +351,15 @@ class Translator(object):
         # NUM
         id = self.parser.read("NUM").value
         if id == '-1':
-            self.write_statement('$ for img in %s.keys(): renpy.hide(img)' % self.vars['sprites'])
+            self.write_statement('$ for img in ns_state.sprites: renpy.hide(img)')
         else:
             self.write_statement('hide s%s' % id)
+
+    def cmd_filelog(self):
+        pass
+
+    def cmd_globalon(self):
+        pass
 
     def cmd_gosub(self):
         # LABEL
@@ -396,18 +406,18 @@ class Translator(object):
 
         img = self.get_image(sprite, pos)
 
-        self.write_statement('$ %s=get_xpos("%s", "%s")' % (self.vars['xpos'], img, pos))
-        self.write_statement('show %s %s at Position(xanchor=0, yalign=1.0, xpos=%s)' % (pos, img, self.vars['xpos']))
+        self.write_statement('$ ns_state.xpos=get_xpos(ns_state, "%s", "%s")' % (img, pos))
+        self.write_statement('show %s %s at Position(xanchor=0, yalign=1.0, xpos=ns_state.xpos)' % (pos, img))
 
     def cmd_lsp(self):
         # NUM,STR,NUM,NUM,NUM
-        id = self.parser.read("NUM").value
+        id = self.parser.read(["NUM", "VARNUM", "IDENTIFIER"]).value
         self.parser.read("COMMA")
-        sprite = self.parser.read(["STR", "VARSTR"])
+        sprite = self.parser.read(["STR", "VARSTR", "IDENTIFIER"])
         self.parser.read("COMMA")
-        xpos = self.parser.read(["NUM"])
+        xpos = self.parser.read(["NUM", "VARNUM"])
         self.parser.read("COMMA")
-        ypos = self.parser.read(["NUM"])
+        ypos = self.parser.read(["NUM", "VARNUM"])
         if self.parser.read("COMMA", mandatory=False) is not None:
             alpha = self.parser.read(["NUM"]).value
         else:
@@ -415,22 +425,22 @@ class Translator(object):
 
         img = self.get_image(sprite, "s%s" % id)
 
-        self.write_statement('$ %s["s%s"] = "%s"' % (self.vars['sprites'], id, img))
-        self.write_statement('$ %s=int(%s*%s)' % (self.vars['xpos'], xpos.value, self.vars['rw']))
-        self.write_statement('$ %s=int(%s*%s)' % (self.vars['ypos'], ypos.value, self.vars['rh']))
-        self.write_statement('$ %s = Position(xanchor=0, yanchor=0, xpos=%s, ypos=%s)' % (self.vars['spos'], self.vars['xpos'], self.vars['ypos']))
-        self.write_statement('$ %s=%s' % (self.vars['salpha'], alpha))
-        self.write_statement('$ %s = Transform(alpha=%s/255.0)' % (self.vars['salphatrans'], self.vars['salpha']))
-        self.write_statement('$ renpy.show(("s%s", %s["s%s"]), at_list=[%s, %s])' % (id, self.vars['sprites'], id, self.vars['spos'], self.vars['salphatrans']))
+        self.write_statement('$ ns_state.sprites["s%s"] = "%s"' % (id, img))
+        self.write_statement('$ ns_state.xpos=int(%s*ns_state.rw)' % xpos.value)
+        self.write_statement('$ ns_state.ypos=int(%s*ns_state.rh)' % ypos.value)
+        self.write_statement('$ ns_state.spos = Position(xanchor=0, yanchor=0, xpos=ns_state.xpos, ypos=ns_state.ypos)')
+        self.write_statement('$ ns_state.salpha=%s' % alpha)
+        self.write_statement('$ ns_state.salphatrans = Transform(alpha=ns_state.salpha/255.0)')
+        self.write_statement('$ renpy.show(("s%s", ns_state.sprites["s%s"]), at_list=[ns_state.spos, ns_state.salphatrans])' % (id, id))
 
     def cmd_mov(self):
         var = self.parser.read(["VARNUM", "VARSTR"])
         self.parser.read("COMMA")
 
         if var.type == "VARNUM":
-            val = self.parser.read(["NUM", "VARNUM"])
+            val = self.parser.read(["NUM", "VARNUM", "IDENTIFIER"])
         else:
-            val = self.parser.read(["STR", "VARSTR"])
+            val = self.parser.read(["STR", "VARSTR", "IDENTIFIER"])
 
         if not var in self.variables:
             self.variables[var] = []
@@ -450,13 +460,20 @@ class Translator(object):
         else:
             alpha = '0'
 
-        self.write_statement('$ %s+=%s' % (self.vars['xpos'], xpos.value))
-        self.write_statement('$ %s+=%s' % (self.vars['ypos'], ypos.value))
-        self.write_statement('$ %s = Position(xanchor=0, yanchor=0, xpos=%s, ypos=%s)' % (self.vars['spos'], self.vars['xpos'], self.vars['ypos']))
-        self.write_statement('$ %s+=%s' % (self.vars['salpha'], alpha))
-        self.write_statement('$ %s = Transform(alpha=%s/255.0)' % (self.vars['salphatrans'], self.vars['salpha']))
+        self.write_statement('$ ns_state.xpos+=%s' % xpos.value)
+        self.write_statement('$ ns_state.ypos+=%s' % ypos.value)
+        self.write_statement('$ ns_state.spos = Position(xanchor=0, yanchor=0, xpos=ns_state.xpos, ypos=ns_state.ypos)')
+        self.write_statement('$ ns_state.salpha+=%s' % alpha)
+        self.write_statement('$ ns_state.salphatrans = Transform(alpha=ns_state.salpha/255.0)')
         self.write_statement('$ renpy.hide("s%s")' % id)
-        self.write_statement('$ renpy.show(("s%s", %s["s%s"]), at_list=[%s, %s])' % (id, self.vars['sprites'], id, self.vars['spos'], self.vars['salphatrans']))
+        self.write_statement('$ renpy.show(("s%s", ns_state.sprites["s%s"]), at_list=[ns_state.spos, ns_state.salphatrans])' % (id, id))
+
+    def cmd_nsa(self):
+        pass
+
+    def cmd_nsadir(self):
+        # STR
+        dir = self.parser.read("STR").value
 
     def cmd_numalias(self):
         # IDENTIFIER,NUM
@@ -465,7 +482,7 @@ class Translator(object):
         val = self.parser.read("NUM").value
         
         self.parser.numaliases[alias] = val
-        self.write_statement('$ ns_na_%s = %s' % (alias, val))
+        self.write_statement('$ ns_state.numaliases["%s"] = %s' % (alias, val))
         
     def cmd_play(self):
         # STR
@@ -481,7 +498,7 @@ class Translator(object):
 
     def cmd_print(self):
         # NUM
-        effect = self.parser.read("NUM", "VARNUM")
+        effect = self.parser.read(["NUM", "VARNUM", "IDENTIFIER"])
 
     def cmd_quakex(self):
         # NUM, NUM
@@ -507,6 +524,14 @@ class Translator(object):
 
     def cmd_return(self):
         self.write_statement('return')
+
+    def cmd_s(self):
+        # TODO
+        pass
+
+    def cmd_sd(self):
+        # TODO
+        pass
 
     def cmd_select(self):
         self.write_statement('menu:')
@@ -577,10 +602,10 @@ class Translator(object):
         # IDENTIFIER,STR
         alias = self.parser.read("IDENTIFIER").value
         self.parser.read("COMMA")
-        val = self.parser.read("STR").value
+        val = self.parser.read("STR").escaped
 
         self.parser.straliases[alias] = val
-        self.write_statement('$ ns_sa_%s = %s' % (alias, val))
+        self.write_statement('$ ns_state.straliases["%s"] = %s' % (alias, val))
 
     def cmd_textoff(self):
         self.write_statement('window hide')

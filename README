@@ -11,6 +11,8 @@ The following commands are currently (at least partially) supported:
   - br
   - cl
   - csp
+  - filelog
+  - globalon
   - goto
   - gosub
   - if
@@ -19,12 +21,19 @@ The following commands are currently (at least partially) supported:
   - lsp
   - mov
   - msp
+  - nsa
+  - nsadir
   - numalias
   - play
   - playstop
   - print
+  - quakex
+  - quakey
+  - repaint
   - resettimer
   - return
+  - !s
+  - !sd
   - select
   - selgosub
   - setcursor
