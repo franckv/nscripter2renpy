@@ -93,9 +93,9 @@ class Parser(object):
         tokenType = token.type
         if tokenType == 'IDENTIFIER':
             if token.value in self.numaliases:
-                tokenType == 'NUMALIAS'
+                tokenType = 'NUMALIAS'
             elif token.value in self.straliases:
-                tokenType == 'STRALIAS'
+                tokenType = 'STRALIAS'
 
         if expectedType is None or (type(expectedType).__name__=='list' and tokenType in expectedType) or tokenType == expectedType:
             self.current += 1
