@@ -6,11 +6,17 @@ Usage:
     python main.py -f script.txt > script.rpy
 
 The following commands are currently (at least partially) supported:
+  - add
   - autoclick
   - bg
   - br
+  - btn
+  - btndef
+  - btnwait
   - cl
+  - cmp
   - csp
+  - dec
   - filelog
   - globalon
   - goto
@@ -19,8 +25,10 @@ The following commands are currently (at least partially) supported:
   - inc
   - ld
   - lsp
+  - monocro
   - mov
   - msp
+  - notif
   - nsa
   - nsadir
   - numalias
