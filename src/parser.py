@@ -1,4 +1,6 @@
-import sys
+import os, sys
+
+import Image
 
 from lexer import Lexer, Token
 
@@ -13,6 +15,8 @@ class Parser(object):
         self.nskip = 0
         self.numaliases = {}
         self.straliases = {}
+        self.nimage = 0
+        self.images = {}
 
         self.rules = [
             ("BLANK", r"[ \t\r\n]+"),
@@ -24,7 +28,7 @@ class Parser(object):
             ("SKIP", (r"skip\s*-?[0-9]+", self.skip_cb)),
             ("COLOR", r"#[a-fA-F0-9]{6}|white|black"),
             ("IDENTIFIER", r"[a-zA-Z_]\w*|!w|!sd|!s|!d"),
-            ("STR", r"\".*\""),
+            ("STR", r"\"[^\"\n]*\"+"),
             ("TEXT", r"`[^`\n]*`?|\\"),
             ("COMMA",   r","),
             ("SEP",   r":"),
@@ -53,6 +57,37 @@ class Parser(object):
         self.tokens = [token for token in lex.scan(content) if token is not None and token.type != "COMMENT"]
 
         self.current = 0
+
+    def load_images(self, folder):
+        for dirpath, dirnames, filenames in os.walk(os.path.expanduser(folder)):
+            for f in filenames:
+                filename = os.path.join(dirpath, f)
+                if not filename.endswith('.jpg') and not filename.endswith('.png') and not filename.endswith('.gif'):
+                    continue
+                img = Image.open(filename)
+                size = img.size
+                relname = os.path.relpath(filename, os.path.expanduser(folder))
+                self.register_image(relname, size)
+
+    def register_image(self, filename = None, size = (0, 0), alpha = False):
+        key = filename.replace('\\', '/').lower()
+        img_id = "__image__%i" % self.nimage
+        self.images[key] = {'id': img_id, 'filename': filename, 'size': size, 'alpha': alpha}
+        self.nimage += 1
+        return img_id
+        
+    def read_script(self, file, encrypted = True):
+        content = file.read()
+        result = ''
+        if encrypted:
+            for c in content:
+                val = ord(c)
+                val ^= 0x84
+                result += chr(val)
+        else:
+            result = content
+
+        return result
 
     def escape(self, token):
         if token.type == "STR":
@@ -112,9 +147,6 @@ class Translator(object):
     def __init__(self, parser, out):
         self.parser = parser
         self.out = out
-        self.nimage = 0
-        self.images = {}
-        self.variables = {}
         self.indent = 0
 
     def translate(self):
@@ -149,24 +181,23 @@ class Translator(object):
         self.generate_images()
 
     def generate_images(self):
-        for (pos, img) in self.images.keys():
-            if img.type == 'COLOR':
-                self.write_statement('image %s %s = %s' % (pos, self.images[(pos, img)], img.escaped))
-            elif img.type == 'VARSTR':
-                imgDef = ''
-                for val in self.variables[img]:
-                    if imgDef != '':
-                        imgDef += ', '
-                    if val.value.startswith('":a;'):
-                        imgDef += '\'%s==%s\', alpha_blend(ns_state_init, %s, "%s")' % (self.get_var_value(img), val.escaped, val.escaped.replace(':a;', '').lower(), self.images[(pos, img)])
-                    else:
-                        imgDef += '\'%s==%s\', scale(ns_state_init, %s)' % (self.get_var_value(img), val.escaped, val.escaped.lower())
-                self.write_statement('image %s %s = ConditionSwitch(%s)' %  (pos, self.images[(pos, img)], imgDef))
-            else:
-                if img.value.startswith('":a;'):
-                    self.write_statement('image %s %s = alpha_blend(ns_state_init, %s, "%s")' % (pos, self.images[(pos, img)], img.escaped.replace(':a;', '').lower(), self.images[(pos, img)]))
-                else:
-                    self.write_statement('image %s %s = scale(ns_state_init, %s)' % (pos, self.images[(pos, img)], img.escaped.lower()))
+        for key in self.parser.images:
+            id = self.parser.images[key]['id']
+            filename = self.parser.images[key]['filename']
+            alpha = self.parser.images[key]['alpha']
+            size = self.parser.images[key]['size']
+
+            self.write_statement('$ register_image(ns_state_init, "%s", "%s", %s, (%s, %s))' % ((id, filename, alpha) + tuple(size)))
+
+            #if key.startswith('#'):
+            #    self.write_statement('image %s = %s' % (id, key))
+            #elif alpha:
+            #    self.write_statement('image %s = alpha_blend(ns_state_init, "%s", (%s, %s))' % ((id, filename) + tuple(size)))
+            #else:
+            #    self.write_statement('image %s = scale(ns_state_init, "%s", (%s, %s))' % ((id, filename) + tuple(size)))
+
+            #self.write_statement('$ ns_state_init.images["%s"] = "%s"' % (filename, id))
+            #self.write_statement('$ ns_state_init.images_size["%s"] = (%s, %s)' % ((id, ) + tuple(size)))
 
     def handle_token(self, token):
         if token.type == "IDENTIFIER":
@@ -222,12 +253,27 @@ class Translator(object):
         skipto = token.line + token.value
         self.write_statement('jump %s' % self.parser.skiplabel[skipto])
 
-    def get_image(self, img, pos):
-        if not (pos, img) in self.images:
-            self.images[(pos, img)] = "__image__%i" % self.nimage
-            self.nimage += 1
+    def get_image_id(self, token):
+        if token.type == "VARSTR":
+            return 'ns_state.images[ns_state.strvars[%s]]' % token.escaped
+        else:
+            key = token.escaped.replace('"', '').lower()
+            alpha = False
+            if key.startswith(':a;'):
+                alpha = True
+                key = key.replace(':a;', '', 1)
+            elif key.startswith(':c;'): 
+                key = key.replace(':c;', '', 1)
 
-        return self.images[(pos, img)]
+            if key in self.parser.images:
+                if alpha:
+                    self.parser.images[key]['alpha'] = True
+                return '"%s"' % self.parser.images[key]['id']
+            elif key.startswith('#'):
+                img_id = self.parser.register_image(key)
+                return '"%s"' % img_id
+            else:
+                sys.stderr.write('Unknown image: %s\n' % key)
 
     def get_sprite_id(self, token):
         # 1 -> s1
@@ -251,7 +297,22 @@ class Translator(object):
         elif token.type == "VARSTR":
             return 'ns_state.strvars[%s]' % token.escaped
         else:
-            return token.escaped
+            val = token.escaped
+            if token.type == "STR" or token.type == "STRALIAS":
+                key = val.replace('"', '').lower()
+                alpha = False
+                if key.startswith(':a;'):
+                    key = key.replace(':a;', '', 1)
+                    alpha = True
+                elif key.startswith(':c;'):
+                    key = key.replace(':c;', '', 1)
+
+                if key in self.parser.images:
+                    if alpha:
+                        self.parser.images[key]['alpha'] = True
+                    val = val.replace(':a;', '', 1).replace(':c;', '', 1)
+
+            return val
 
     def read_command(self, token):
         if token.value == 'add':
@@ -342,6 +403,8 @@ class Translator(object):
             self.cmd_textoff()
         elif token.value == 'texton':
             self.cmd_texton()
+        elif token.value == 'versionstr':
+            self.cmd_versionstr()
         elif token.value == '!w':
             self.cmd_w()
         elif token.value == 'wait':
@@ -382,8 +445,9 @@ class Translator(object):
         if comma is not None:
             effect = self.parser.read(["NUM", "VARNUM", "NUMALIAS"])
 
-        img = self.get_image(bg, 'bg')
-        self.write_statement('scene bg %s' % img)
+        img_id = self.get_image_id(bg)
+        self.write_statement('$ renpy.scene()')
+        self.write_statement('$ renpy.show(%s)' % img_id)
 
     def cmd_br(self):
         self.write_statement('"{fast}{nw}"')
@@ -410,9 +474,6 @@ class Translator(object):
     def cmd_btnwait(self):
         var = self.parser.read("VARNUM")
         val = Token('NUM', 0, 0)
-        if not var in self.variables:
-            self.variables[var] = []
-        self.variables[var].append(val)
         self.write_statement('$ %s=%s' % (self.get_var_value(var), self.get_var_value(val))) 
 
     def cmd_cl(self):
@@ -422,11 +483,11 @@ class Translator(object):
         effect = self.parser.read(["NUM", "VARNUM", "NUMALIAS"])
 
         if pos == 'a':
-            self.write_statement('hide r')
-            self.write_statement('hide c')
-            self.write_statement('hide l')
+            self.write_statement('$ renpy.hide(ns_state.r)')
+            self.write_statement('$ renpy.hide(ns_state.c)')
+            self.write_statement('$ renpy.hide(ns_state.l)')
         else:
-            self.write_statement('hide %s' % pos)
+            self.write_statement('$ renpy.hide(ns_state.%s)' % pos)
 
     def cmd_cmp(self):
         # VARNUM, STR, STR
@@ -442,7 +503,7 @@ class Translator(object):
         # NUM
         id = self.parser.read("NUM").value
         if id == '-1':
-            self.write_statement('$ for img in ns_state.sprites: renpy.hide(img)')
+            self.write_statement('$ for img in ns_state.sprites: renpy.hide(ns_state.sprites[img])')
         else:
             self.write_statement('hide s%s' % id)
 
@@ -509,23 +570,15 @@ class Translator(object):
         self.parser.read("COMMA")
         effect = self.parser.read(["NUM", "VARNUM", "NUMALIAS"])
 
-        img = self.get_image(sprite, pos)
+        img_id = self.get_image_id(sprite)
 
-        self.write_statement('$ ns_state.xpos=get_xpos(ns_state, "%s", "%s")' % (img, pos))
-        self.write_statement('show %s %s at Position(xanchor=0, yalign=1.0, xpos=ns_state.xpos)' % (pos, img))
+        self.write_statement('$ ns_state.%s = %s' % (pos, img_id))
+        self.write_statement('$ ns_state.xpos=get_xpos(ns_state, %s, "%s")' % (img_id, pos))
+        self.write_statement('$ renpy.show(%s, at_list=[Position(xanchor=0, yalign=1.0, xpos=ns_state.xpos)])' % img_id)
 
     def cmd_lsp(self):
         # NUM,STR,NUM,NUM,NUM
         id = self.parser.read(["NUM", "VARNUM", "NUMALIAS"])
-        if id.type == 'NUM':
-            id = 's%s' % id.value
-        elif id.type == 'NUMALIAS':
-            id = 's%s' % self.parser.numaliases[id.value]
-        else:
-            id = id.value.replace('%', '')
-            if id in self.parser.numaliases:
-                id = self.parser.numaliases[id]
-            id = 'sv%s' % id
         self.parser.read("COMMA")
         sprite = self.parser.read(["STR", "VARSTR", "STRALIAS"])
         self.parser.read("COMMA")
@@ -537,15 +590,16 @@ class Translator(object):
         else:
             alpha = '0'
 
-        img = self.get_image(sprite, id)
+        sprite_id = self.get_var_value(id)
+        img_id = self.get_image_id(sprite)
 
-        self.write_statement('$ ns_state.sprites["%s"] = "%s"' % (id, img))
+        self.write_statement('$ ns_state.sprites[%s] = %s' % (sprite_id, img_id))
         self.write_statement('$ ns_state.xpos=int(%s*ns_state.rw)' % xpos.value)
         self.write_statement('$ ns_state.ypos=int(%s*ns_state.rh)' % ypos.value)
         self.write_statement('$ ns_state.spos = Position(xanchor=0, yanchor=0, xpos=ns_state.xpos, ypos=ns_state.ypos)')
         self.write_statement('$ ns_state.salpha=%s' % alpha)
         self.write_statement('$ ns_state.salphatrans = Transform(alpha=ns_state.salpha/255.0)')
-        self.write_statement('$ renpy.show(("%s", ns_state.sprites["%s"]), at_list=[ns_state.spos, ns_state.salphatrans])' % (id, id))
+        self.write_statement('$ renpy.show(%s, at_list=[ns_state.spos, ns_state.salphatrans])' % img_id)
 
     def cmd_monocro(self):
         col = self.parser.read(['COLOR', 'IDENTIFIER'])
@@ -559,15 +613,11 @@ class Translator(object):
         else:
             val = self.parser.read(["STR", "VARSTR", "STRALIAS"])
 
-        if not var in self.variables:
-            self.variables[var] = []
-        self.variables[var].append(val)
-
         self.write_statement('$ %s=%s' % (self.get_var_value(var), self.get_var_value(val))) 
 
     def cmd_msp(self):
         # NUM,NUM,NUM,NUM
-        id = self.parser.read("NUM").value
+        id = self.parser.read("NUM")
         self.parser.read("COMMA")
         xpos = self.parser.read(["NUM"])
         self.parser.read("COMMA")
@@ -577,13 +627,15 @@ class Translator(object):
         else:
             alpha = '0'
 
+        sprite_id = self.get_var_value(id)
+
         self.write_statement('$ ns_state.xpos+=%s' % xpos.value)
         self.write_statement('$ ns_state.ypos+=%s' % ypos.value)
         self.write_statement('$ ns_state.spos = Position(xanchor=0, yanchor=0, xpos=ns_state.xpos, ypos=ns_state.ypos)')
         self.write_statement('$ ns_state.salpha+=%s' % alpha)
         self.write_statement('$ ns_state.salphatrans = Transform(alpha=ns_state.salpha/255.0)')
-        self.write_statement('$ renpy.hide("%s")' % id)
-        self.write_statement('$ renpy.show(("%s", ns_state.sprites["%s"]), at_list=[ns_state.spos, ns_state.salphatrans])' % (id, id))
+        self.write_statement('$ renpy.hide(ns_state.sprites[%s])' % sprite_id)
+        self.write_statement('$ renpy.show(ns_state.sprites[%s], at_list=[ns_state.spos, ns_state.salphatrans])' % sprite_id)
 
     def cmd_notif(self):
         return self.cmd_if(notif=True)
@@ -698,12 +750,13 @@ class Translator(object):
         # NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,NUM,STR,NUM,NUM
         for i in range(11):
             self.parser.read("NUM")
-            self.parser.read("COMMA")
+            self.parser.read("COMMA", mandatory=False)
 
         bg = self.parser.read(["STR", "COLOR"])
 
-        img = self.get_image(bg, 'bg')
-        self.write_statement('scene bg %s' % img)
+        img_id = self.get_image_id(bg)
+        self.write_statement('$ renpy.scene()')
+        self.write_statement('$ renpy.show(%s)' % img_id)
 
         if bg.type == "STR":
             r = 2
@@ -732,6 +785,13 @@ class Translator(object):
 
     def cmd_texton(self):
         self.write_statement('window show')
+
+    def cmd_versionstr(self):
+        # STR, STR
+        v1 = self.parser.read("STR")
+        sys.stderr.write('%s\n' % v1)
+        self.parser.read("COMMA")
+        self.parser.read("STR")
 
     def cmd_w(self):
         # NUM

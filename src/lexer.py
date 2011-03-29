@@ -1,6 +1,6 @@
 # Adapted from http://www.evanfosmark.com/2009/02/sexy-lexing-with-python/
 
-import re
+import re, sys
  
  
 class UnknownTokenError(Exception):
@@ -71,7 +71,6 @@ class _InputScanner(object):
                 return None
         match = self.lexer.regexc.match(self.input, self._position)
         if match is None:
-            print("No match: " + self.input[self._position] + ": " + str(lineno))
             raise UnknownTokenError(self.input[self._position], self.lineno)
         self._position = match.end()
         value = match.group(match.lastgroup)

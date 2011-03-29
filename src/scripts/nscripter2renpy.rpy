@@ -8,21 +8,26 @@ init 1:
   python:
     menu = nvl_menu
     narrator = Character(None, kind=nvl)
+    nimages = 1
     class State:
         def __init__(self):
             self.rw = None
             self.rh = None
-            self.sprites = {}
             self.numaliases = {}
             self.straliases = {}
-            self.images_size = {}
             self.numvars = [0,] * 4096
             self.strvars = ["",] * 4096
+            self.sprites = [0,] * 999
+            self.images = {}
+            self.images_size = {}
             self.salpha = 0
             self.salphatrans = None
             self.spos = None
             self.ypos = 0
             self.xpos = 0
+            self.l = None
+            self.c = None
+            self.r = None
 
     ns_state_init = State()
 
@@ -31,19 +36,35 @@ init 1:
     print('init executed %d times' % persistent.initruns)
     persistent.initruns += 1
 
-    def scale(state, img):
+    def register_image(state, filename, alpha, size):
+      img_id = "___image___%i" % nimages
+      nimages += 1
+      if filename.startswith('#'):
+        renpy.image(img_id, filename)
+      elif alpha:
+        renpy.image(img_id, alpha_blend(state, filename, size))
+      else:
+        renpy.image(img_id, scale(state, filename, size))
+      
+      state.images[filename] = img_id
+      state.images_size[img_id] = size
+
+    def scale(state, img, size):
       if state.rw is None:
-          (w, h) = Image(img).load().get_size()
+          (w, h) = size
           state.rw = config.screen_width / float(w)
           state.rh = config.screen_height / float(h)
       return im.FactorScale(img, state.rw, state.rh)
   
-    def alpha_blend(state, img, id):
-      (w, h) = Image(img).load().get_size()
-      state.images_size[id] = (w, h)
+    def alpha_blend(state, img, size):
+      (w, h) = size
       i = im.Crop(img, (0, 0, w/2, h))
       m = im.MatrixColor(im.Crop(img, (w/2, 0, w/2, h)), im.matrix.invert())
       return im.FactorScale(im.AlphaMask(i, m), state.rw, state.rh)
+
+    def show_image(filename, at_list=[]):
+      if filename in state.images:
+        renpy.show(state.images[filename], at_list)
 
     def get_xpos(state, id, pos):
       if pos == 'l':

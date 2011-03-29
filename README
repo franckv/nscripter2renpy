@@ -51,6 +51,7 @@ The following commands are currently (at least partially) supported:
   - stralias
   - textoff
   - texton
+  - versionstr
   - !w
   - wait
   - waittimer

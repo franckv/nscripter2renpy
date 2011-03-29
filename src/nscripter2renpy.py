@@ -1,4 +1,4 @@
-import sys
+import os, sys
 import logging
 from optparse import OptionParser
 
@@ -15,23 +15,30 @@ if __name__ == '__main__':
 
     logging.debug('Start')
 
-    usage = 'Usage: %prog COMMAND [ARGS]'
-    parser = OptionParser(usage)
-    parser.add_option('-f', dest='filename', help='input filename')
+    usage = 'Usage: %prog dirname'
+    optparser = OptionParser(usage)
 
-    (options, args) = parser.parse_args()
+    (options, args) = optparser.parse_args()
 
-    if options.filename is None:
-        print("filename is missing\n")
-        parser.print_help()
-        exit(-1)
+    if len(args) == 0:
+        optparser.print_usage()
+        sys.exit(-1)
+
+    dirname = args[0]
+    if dirname is None:
+        dirname = os.getcwd()
 
     parser = Parser()
-    input = open(options.filename, 'r', encoding='sjis')
 
-    parser.tokenize(input.read())
+    parser.load_images(dirname)
 
+    script = os.path.join(dirname, 'nscript.dat')
+    input = open(script, 'rb')
+    content = parser.read_script(input)
     input.close()
+    content = content.decode('sjis')
+
+    parser.tokenize(content)
 
     translator = Translator(parser, sys.stdout)
 
