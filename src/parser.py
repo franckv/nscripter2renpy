@@ -15,8 +15,6 @@ class Parser(object):
         self.nskip = 0
         self.numaliases = {}
         self.straliases = {}
-        self.nimage = 0
-        self.images = {}
 
         self.rules = [
             ("BLANK", r"[ \t\r\n]+"),
@@ -58,24 +56,6 @@ class Parser(object):
 
         self.current = 0
 
-    def load_images(self, folder):
-        for dirpath, dirnames, filenames in os.walk(os.path.expanduser(folder)):
-            for f in filenames:
-                filename = os.path.join(dirpath, f)
-                if not filename.endswith('.jpg') and not filename.endswith('.png') and not filename.endswith('.gif'):
-                    continue
-                img = Image.open(filename)
-                size = img.size
-                relname = os.path.relpath(filename, os.path.expanduser(folder))
-                self.register_image(relname, size)
-
-    def register_image(self, filename = None, size = (0, 0), alpha = False):
-        key = filename.replace('\\', '/').lower()
-        img_id = "__image__%i" % self.nimage
-        self.images[key] = {'id': img_id, 'filename': filename, 'size': size, 'alpha': alpha}
-        self.nimage += 1
-        return img_id
-        
     def read_script(self, file, encrypted = True):
         content = file.read()
         result = ''
@@ -101,15 +81,17 @@ class Parser(object):
         elif token.type == "VARNUM":
             var = token.value.replace('%', '')
             if var in self.numaliases:
-                return self.numaliases[var]
+                val = self.numaliases[var]
             else:
-                return var
+                val = var
+            return 'ns_state.numvars[%s]' % val
         elif token.type == "VARSTR":
             var = token.value.replace('$', '')
             if var in self.numaliases:
-                return self.numaliases[var]
+                val = self.numaliases[var]
             else:
-                return var
+                val = var
+            return 'ns_state.strvars[%s]' % val
         elif token.type == "COLOR":
             return '"%s"' % token.value
         elif token.type == 'AND':
@@ -175,29 +157,6 @@ class Translator(object):
             self.handle_token(token)
 
         self.indent = 0
-        self.write_statement('')
-        self.write_statement('init 2:')
-        self.indent += 1
-        self.generate_images()
-
-    def generate_images(self):
-        for key in self.parser.images:
-            id = self.parser.images[key]['id']
-            filename = self.parser.images[key]['filename']
-            alpha = self.parser.images[key]['alpha']
-            size = self.parser.images[key]['size']
-
-            self.write_statement('$ register_image(ns_state_init, "%s", "%s", %s, (%s, %s))' % ((id, filename, alpha) + tuple(size)))
-
-            #if key.startswith('#'):
-            #    self.write_statement('image %s = %s' % (id, key))
-            #elif alpha:
-            #    self.write_statement('image %s = alpha_blend(ns_state_init, "%s", (%s, %s))' % ((id, filename) + tuple(size)))
-            #else:
-            #    self.write_statement('image %s = scale(ns_state_init, "%s", (%s, %s))' % ((id, filename) + tuple(size)))
-
-            #self.write_statement('$ ns_state_init.images["%s"] = "%s"' % (filename, id))
-            #self.write_statement('$ ns_state_init.images_size["%s"] = (%s, %s)' % ((id, ) + tuple(size)))
 
     def handle_token(self, token):
         if token.type == "IDENTIFIER":
@@ -252,67 +211,6 @@ class Translator(object):
     def read_skip(self, token):
         skipto = token.line + token.value
         self.write_statement('jump %s' % self.parser.skiplabel[skipto])
-
-    def get_image_id(self, token):
-        if token.type == "VARSTR":
-            return 'ns_state.images[ns_state.strvars[%s]]' % token.escaped
-        else:
-            key = token.escaped.replace('"', '').lower()
-            alpha = False
-            if key.startswith(':a;'):
-                alpha = True
-                key = key.replace(':a;', '', 1)
-            elif key.startswith(':c;'): 
-                key = key.replace(':c;', '', 1)
-
-            if key in self.parser.images:
-                if alpha:
-                    self.parser.images[key]['alpha'] = True
-                return '"%s"' % self.parser.images[key]['id']
-            elif key.startswith('#'):
-                img_id = self.parser.register_image(key)
-                return '"%s"' % img_id
-            else:
-                sys.stderr.write('Unknown image: %s\n' % key)
-
-    def get_sprite_id(self, token):
-        # 1 -> s1
-        # %1 -> sv1
-        # numalias p,1 : p -> s1
-        if token.type == 'NUM':
-            return 's%s' % token.value
-        elif token.type == 'NUMALIAS':
-            return 's%s' % token.escaped
-        else:
-            return 'sv%s' % token.escaped
-
-        return id
-
-    def get_var_value(self, token):
-        # 1 -> 1
-        # %1 -> ns_state.numvars[1]
-        # numalias p,1 : p -> 1
-        if token.type == "VARNUM":
-            return 'ns_state.numvars[%s]' % token.escaped
-        elif token.type == "VARSTR":
-            return 'ns_state.strvars[%s]' % token.escaped
-        else:
-            val = token.escaped
-            if token.type == "STR" or token.type == "STRALIAS":
-                key = val.replace('"', '').lower()
-                alpha = False
-                if key.startswith(':a;'):
-                    key = key.replace(':a;', '', 1)
-                    alpha = True
-                elif key.startswith(':c;'):
-                    key = key.replace(':c;', '', 1)
-
-                if key in self.parser.images:
-                    if alpha:
-                        self.parser.images[key]['alpha'] = True
-                    val = val.replace(':a;', '', 1).replace(':c;', '', 1)
-
-            return val
 
     def read_command(self, token):
         if token.value == 'add':
@@ -405,6 +303,8 @@ class Translator(object):
             self.cmd_texton()
         elif token.value == 'versionstr':
             self.cmd_versionstr()
+        elif token.value == 'vsp':
+            self.cmd_vsp()
         elif token.value == '!w':
             self.cmd_w()
         elif token.value == 'wait':
@@ -433,7 +333,7 @@ class Translator(object):
         else:
             val = self.parser.read(["STR", "VARSTR", "STRALIAS"])
 
-        self.write_statement('$ %s+=%s' % (self.get_var_value(var), self.get_var_value(val))) 
+        self.write_statement('$ %s+=%s' % (var.escaped, val.escaped)) 
 
     def cmd_autoclick(self):
         # NUM
@@ -445,9 +345,8 @@ class Translator(object):
         if comma is not None:
             effect = self.parser.read(["NUM", "VARNUM", "NUMALIAS"])
 
-        img_id = self.get_image_id(bg)
         self.write_statement('$ renpy.scene()')
-        self.write_statement('$ renpy.show(%s)' % img_id)
+        self.write_statement('$ show_image(ns_state, %s, "bg")' % bg.escaped)
 
     def cmd_br(self):
         self.write_statement('"{fast}{nw}"')
@@ -474,7 +373,7 @@ class Translator(object):
     def cmd_btnwait(self):
         var = self.parser.read("VARNUM")
         val = Token('NUM', 0, 0)
-        self.write_statement('$ %s=%s' % (self.get_var_value(var), self.get_var_value(val))) 
+        self.write_statement('$ %s=%s' % (var.escaped, val.escaped)) 
 
     def cmd_cl(self):
         # IDENTIFIER,NUM
@@ -483,11 +382,11 @@ class Translator(object):
         effect = self.parser.read(["NUM", "VARNUM", "NUMALIAS"])
 
         if pos == 'a':
-            self.write_statement('$ renpy.hide(ns_state.r)')
-            self.write_statement('$ renpy.hide(ns_state.c)')
-            self.write_statement('$ renpy.hide(ns_state.l)')
+            self.write_statement('$ renpy.hide("r")')
+            self.write_statement('$ renpy.hide("c")')
+            self.write_statement('$ renpy.hide("l")')
         else:
-            self.write_statement('$ renpy.hide(ns_state.%s)' % pos)
+            self.write_statement('$ renpy.hide("%s")' % pos)
 
     def cmd_cmp(self):
         # VARNUM, STR, STR
@@ -497,20 +396,20 @@ class Translator(object):
         self.parser.read('COMMA')
         str2 = self.parser.read(['STR', 'STRALIAS', 'VARSTR'])
 
-        self.write_statement('$ %s=cmp(%s, %s)' % (self.get_var_value(var), self.get_var_value(str1), self.get_var_value(str2)))
+        self.write_statement('$ %s=cmp(%s, %s)' % (var.escaped, str1.escaped, str2.escaped))
 
     def cmd_csp(self):
         # NUM
         id = self.parser.read("NUM").value
         if id == '-1':
-            self.write_statement('$ for img in ns_state.sprites: renpy.hide(ns_state.sprites[img])')
+            self.write_statement('$ for img in ns_state.sprites: renpy.hide(img)')
         else:
             self.write_statement('hide s%s' % id)
 
     def cmd_dec(self):
         # VARNUM
         var = self.parser.read("VARNUM")
-        self.write_statement('$ %s-=1' % self.get_var_value(var))
+        self.write_statement('$ %s-=1' % var.escaped)
 
     def cmd_filelog(self):
         pass
@@ -540,12 +439,8 @@ class Translator(object):
 
                 if op is None:
                     break
-
-                stmt += ' '
-                if op.type == "VARNUM":
-                    stmt += self.get_var_value(op)
                 else:
-                    stmt += op.escaped
+                    stmt += ' ' + op.escaped
 
         if notif:
             self.write_statement("not (%s):" % stmt)
@@ -560,21 +455,17 @@ class Translator(object):
     def cmd_inc(self):
         # VARNUM
         var = self.parser.read("VARNUM")
-        self.write_statement('$ %s+=1' % self.get_var_value(var))
+        self.write_statement('$ %s+=1' % var.escaped)
 
     def cmd_ld(self):
         # IDENTIFIER,STR,NUM
-        pos = self.parser.read("IDENTIFIER").value
+        pos = self.parser.read("IDENTIFIER")
         self.parser.read("COMMA")
         sprite = self.parser.read(["STR", "VARSTR", "STRALIAS"])
         self.parser.read("COMMA")
         effect = self.parser.read(["NUM", "VARNUM", "NUMALIAS"])
 
-        img_id = self.get_image_id(sprite)
-
-        self.write_statement('$ ns_state.%s = %s' % (pos, img_id))
-        self.write_statement('$ ns_state.xpos=get_xpos(ns_state, %s, "%s")' % (img_id, pos))
-        self.write_statement('$ renpy.show(%s, at_list=[Position(xanchor=0, yalign=1.0, xpos=ns_state.xpos)])' % img_id)
+        self.write_statement('$ show_standing(ns_state, %s, "%s")' % (sprite.escaped, pos.escaped))
 
     def cmd_lsp(self):
         # NUM,STR,NUM,NUM,NUM
@@ -590,16 +481,7 @@ class Translator(object):
         else:
             alpha = '0'
 
-        sprite_id = self.get_var_value(id)
-        img_id = self.get_image_id(sprite)
-
-        self.write_statement('$ ns_state.sprites[%s] = %s' % (sprite_id, img_id))
-        self.write_statement('$ ns_state.xpos=int(%s*ns_state.rw)' % xpos.value)
-        self.write_statement('$ ns_state.ypos=int(%s*ns_state.rh)' % ypos.value)
-        self.write_statement('$ ns_state.spos = Position(xanchor=0, yanchor=0, xpos=ns_state.xpos, ypos=ns_state.ypos)')
-        self.write_statement('$ ns_state.salpha=%s' % alpha)
-        self.write_statement('$ ns_state.salphatrans = Transform(alpha=ns_state.salpha/255.0)')
-        self.write_statement('$ renpy.show(%s, at_list=[ns_state.spos, ns_state.salphatrans])' % img_id)
+        self.write_statement('$ store_show_sprite(ns_state, %s, %s, %s, %s, %s)' % (sprite.escaped, id.escaped, xpos.escaped, ypos.escaped, alpha))
 
     def cmd_monocro(self):
         col = self.parser.read(['COLOR', 'IDENTIFIER'])
@@ -613,7 +495,7 @@ class Translator(object):
         else:
             val = self.parser.read(["STR", "VARSTR", "STRALIAS"])
 
-        self.write_statement('$ %s=%s' % (self.get_var_value(var), self.get_var_value(val))) 
+        self.write_statement('$ %s=%s' % (var.escaped, val.escaped)) 
 
     def cmd_msp(self):
         # NUM,NUM,NUM,NUM
@@ -627,15 +509,7 @@ class Translator(object):
         else:
             alpha = '0'
 
-        sprite_id = self.get_var_value(id)
-
-        self.write_statement('$ ns_state.xpos+=%s' % xpos.value)
-        self.write_statement('$ ns_state.ypos+=%s' % ypos.value)
-        self.write_statement('$ ns_state.spos = Position(xanchor=0, yanchor=0, xpos=ns_state.xpos, ypos=ns_state.ypos)')
-        self.write_statement('$ ns_state.salpha+=%s' % alpha)
-        self.write_statement('$ ns_state.salphatrans = Transform(alpha=ns_state.salpha/255.0)')
-        self.write_statement('$ renpy.hide(ns_state.sprites[%s])' % sprite_id)
-        self.write_statement('$ renpy.show(ns_state.sprites[%s], at_list=[ns_state.spos, ns_state.salphatrans])' % sprite_id)
+        self.write_statement('$ move_sprite(ns_state, %s, %s, %s, %s)' % (id.escaped, xpos.escaped, ypos.escaped, alpha))
 
     def cmd_notif(self):
         return self.cmd_if(notif=True)
@@ -754,9 +628,8 @@ class Translator(object):
 
         bg = self.parser.read(["STR", "COLOR"])
 
-        img_id = self.get_image_id(bg)
         self.write_statement('$ renpy.scene()')
-        self.write_statement('$ renpy.show(%s)' % img_id)
+        self.write_statement('$ show_image(ns_state, %s, "bg")' % bg.escaped)
 
         if bg.type == "STR":
             r = 2
@@ -793,6 +666,14 @@ class Translator(object):
         self.parser.read("COMMA")
         self.parser.read("STR")
 
+    def cmd_vsp(self):
+        # NUM,NUM
+        id = self.parser.read(["NUM", "VARNUM", "NUMALIAS"])
+        self.parser.read("COMMA")
+        visibility = self.parser.read(["NUM", "VARNUM", "NUMALIAS"])
+
+        self.write_statement('$ toggle_sprite(ns_state, %s, %s)' % (id.escaped, visibility.escaped))
+
     def cmd_w(self):
         # NUM
         wait = self.parser.read("NUM")
@@ -807,17 +688,17 @@ class Translator(object):
     def cmd_waittimer(self):
         # NUM
         timer = self.parser.read(["NUM", "VARNUM", "NUMALIAS"])
-        self.write_statement('$ renpy.pause(%s/1000.0)' % self.get_var_value(timer))
+        self.write_statement('$ renpy.pause(%s/1000.0)' % timer.escaped)
 
     def cmd_wave(self):
         # STR
         track = self.parser.read(["STR", "STRALIAS", "VARSTR"])
-        self.write_statement('play sound %s' % self.get_var_value(track).lower())
+        self.write_statement('play sound %s' % track.escaped.lower())
 
     def cmd_waveloop(self):
         # STR
         track = self.parser.read(["STR", "STRALIAS", "VARSTR"])
-        self.write_statement('play sound %s loop' % self.get_var_value(track))
+        self.write_statement('play sound %s loop' % track.escaped)
 
     def cmd_wavestop(self):
         self.write_statement('stop sound')

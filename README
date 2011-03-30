@@ -52,6 +52,7 @@ The following commands are currently (at least partially) supported:
   - textoff
   - texton
   - versionstr
+  - vsp
   - !w
   - wait
   - waittimer

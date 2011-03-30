@@ -17,7 +17,7 @@ init 1:
             self.straliases = {}
             self.numvars = [0,] * 4096
             self.strvars = ["",] * 4096
-            self.sprites = [0,] * 999
+            self.sprites = [("", 0, 0, 0),] * 999
             self.images = {}
             self.images_size = {}
             self.salpha = 0
@@ -36,37 +36,58 @@ init 1:
     print('init executed %d times' % persistent.initruns)
     persistent.initruns += 1
 
-    def register_image(state, filename, alpha, size):
-      img_id = "___image___%i" % nimages
-      nimages += 1
-      if filename.startswith('#'):
-        renpy.image(img_id, filename)
-      elif alpha:
-        renpy.image(img_id, alpha_blend(state, filename, size))
-      else:
-        renpy.image(img_id, scale(state, filename, size))
-      
-      state.images[filename] = img_id
-      state.images_size[img_id] = size
+    def get_size(state, img):
+      return Image(img).load().get_size()
 
-    def scale(state, img, size):
+    def scale(state, img):
       if state.rw is None:
-          (w, h) = size
+          (w, h) = get_size(state, img)
           state.rw = config.screen_width / float(w)
           state.rh = config.screen_height / float(h)
       return im.FactorScale(img, state.rw, state.rh)
   
-    def alpha_blend(state, img, size):
-      (w, h) = size
+    def alpha_blend(state, img):
+      (w, h) = get_size(state, img)
       i = im.Crop(img, (0, 0, w/2, h))
       m = im.MatrixColor(im.Crop(img, (w/2, 0, w/2, h)), im.matrix.invert())
       return im.FactorScale(im.AlphaMask(i, m), state.rw, state.rh)
 
-    def show_image(filename, at_list=[]):
-      if filename in state.images:
-        renpy.show(state.images[filename], at_list)
+    def show_image(state, filename, tag, at_list=[]):
+      if filename.startswith("#"):
+        img = renpy.store.Solid(filename)
+      elif filename.startswith(":a;"):
+        img = alpha_blend(state, filename.replace(":a;", "", 1))
+      elif filename.startswith(":c;"):
+        img = scale(state, filename.replace(":c;", "", 1))
+      else:
+        img = scale(state, filename)
+      renpy.show(tag, at_list = at_list, what=img)
 
-    def get_xpos(state, id, pos):
+    def store_show_sprite(state, filename, id, xpos, ypos, alpha):
+        state.sprites[id] = (filename, int(xpos * state.rw), int(ypos * state.rh), alpha)
+        show_sprite(state, id)
+
+    def toggle_sprite(state, id, visibility):
+        if visibility == 0:
+            renpy.hide("%s" % id)
+        else:
+            show_sprite(state, id)
+
+    def show_sprite(state, id):
+        (filename, xpos, ypos, alpha) = state.sprites[id]
+        alphatrans = Transform(alpha=alpha/255.0)
+        spos = Position(xanchor=0, yanchor=0, xpos=xpos, ypos=ypos)
+        show_image(state, filename, "%s" % id, [alphatrans, spos])
+
+    def move_sprite(state, id, dxpos, dypos, dalpha):
+        (filename, xpos, ypos, alpha) = state.sprites[id]
+        xpos += int(dxpos * state.rw)
+        ypos += int(dypos * state.rh)
+        alpha += dalpha
+        state.sprites[id] = (filename, xpos, ypos, alpha)
+        show_sprite(state, id)
+
+    def show_standing(state, filename, pos):
       if pos == 'l':
         n = 1
       elif pos == 'c':
@@ -74,10 +95,12 @@ init 1:
       elif pos =='r':
         n = 3
 
-      (w, h) = state.images_size[id]
+      (w, h) = get_size(state, filename.replace(":a;", "", 1).replace(":c;", "", 1))
       xpos = int(config.screen_width * n / 4 - w * state.rw / 4)
 
-      return xpos
+      spos = Position(xanchor=0, yalign=1.0, xpos=xpos)
+
+      show_image(state, filename, pos, [spos])
 
     def print_state(state):
       for var in state.__dict__:
