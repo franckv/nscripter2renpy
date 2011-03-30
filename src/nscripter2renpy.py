@@ -30,9 +30,9 @@ if __name__ == '__main__':
 
     parser = Parser()
 
-    script = os.path.join(dirname, 'script_test.txt')
+    script = os.path.join(dirname, 'nscript.dat')
     input = open(script, 'rb')
-    content = parser.read_script(input, False)
+    content = parser.read_script(input)
     input.close()
     content = content.decode('sjis')
 
