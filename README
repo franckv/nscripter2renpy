@@ -14,16 +14,23 @@ The following commands are currently (at least partially) supported:
   - btndef
   - btnwait
   - cl
+  - click
   - cmp
   - csp
+  - !d
+  - date
   - dec
+  - delay
+  - end
   - filelog
+  - game
   - globalon
   - goto
   - gosub
   - if
   - inc
   - ld
+  - lookbackcolor
   - lsp
   - monocro
   - mov
@@ -40,6 +47,7 @@ The following commands are currently (at least partially) supported:
   - repaint
   - resettimer
   - return
+  - rmenu
   - !s
   - !sd
   - select
@@ -49,8 +57,11 @@ The following commands are currently (at least partially) supported:
   - skip
   - stop
   - stralias
+  - systemcall
+  - textclear
   - textoff
   - texton
+  - trap
   - versionstr
   - vsp
   - !w

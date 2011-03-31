@@ -174,7 +174,7 @@ class Translator(object):
         elif token.type == "SEP":
             pass
         else:
-            sys.stderr.write('Invalid token: %s at %d\n' % (token.type, token.line))
+            sys.stderr.write('Invalid token: %s (%s) at %d\n' % (token.type, token.value, token.line))
 
     def write_statement(self, line, newline=True):
         for i in range(self.indent):
@@ -229,14 +229,28 @@ class Translator(object):
             self.cmd_btnwait()
         elif token.value == 'cl':
             self.cmd_cl()
+        elif token.value == 'click':
+            self.cmd_click()
         elif token.value == 'cmp':
             self.cmd_cmp()
         elif token.value == 'csp':
             self.cmd_csp()
+        elif token.value == '!d':
+            self.cmd_d()
+        elif token.value == 'date':
+            self.cmd_date()
         elif token.value == 'dec':
             self.cmd_dec()
+        elif token.value == 'delay':
+            self.cmd_delay()
+        elif token.value == 'effect':
+            self.cmd_effect()
+        elif token.value == 'end':
+            self.cmd_end()
         elif token.value == 'filelog':
             self.cmd_filelog()
+        elif token.value == 'game':
+            self.cmd_game()
         elif token.value == 'globalon':
             self.cmd_globalon()
         elif token.value == 'goto':
@@ -249,6 +263,8 @@ class Translator(object):
             self.cmd_inc()
         elif token.value == 'ld':
             self.cmd_ld()
+        elif token.value == 'lookbackcolor':
+            self.cmd_lookbackcolor()
         elif token.value == 'lsp':
             self.cmd_lsp()
         elif token.value == 'monocro':
@@ -281,6 +297,8 @@ class Translator(object):
             self.cmd_resettimer()
         elif token.value == 'return':
             self.cmd_return()
+        elif token.value == 'rmenu':
+            self.cmd_rmenu()
         elif token.value == '!s':
             self.cmd_s()
         elif token.value == '!sd':
@@ -297,10 +315,16 @@ class Translator(object):
             self.cmd_stop()
         elif token.value == 'stralias':
             self.cmd_stralias()
+        elif token.value == 'systemcall':
+            self.cmd_systemcall()
+        elif token.value == 'textclear':
+            self.cmd_textclear()
         elif token.value == 'textoff':
             self.cmd_textoff()
         elif token.value == 'texton':
             self.cmd_texton()
+        elif token.value == 'trap':
+            self.cmd_trap()
         elif token.value == 'versionstr':
             self.cmd_versionstr()
         elif token.value == 'vsp':
@@ -388,6 +412,9 @@ class Translator(object):
         else:
             self.write_statement('$ renpy.hide("%s")' % pos)
 
+    def cmd_click(self):
+        self.write_statement('$ renpy.pause()')
+
     def cmd_cmp(self):
         # VARNUM, STR, STR
         var = self.parser.read('VARNUM')
@@ -406,12 +433,52 @@ class Translator(object):
         else:
             self.write_statement('hide s%s' % id)
 
+    def cmd_d(self):
+        # NUM
+        wait = self.parser.read(["NUM", "NUMALIAS"])
+        self.write_statement('$ renpy.pause(%s/1000.0)' % wait.value)
+
+    def cmd_date(self):
+        year = self.parser.read("VARNUM")
+        self.parser.read('COMMA')
+        month = self.parser.read("VARNUM")
+        self.parser.read('COMMA')
+        day = self.parser.read("VARNUM")
+
     def cmd_dec(self):
         # VARNUM
         var = self.parser.read("VARNUM")
         self.write_statement('$ %s-=1' % var.escaped)
 
+    def cmd_delay(self):
+        # NUM
+        wait = self.parser.read(["NUM", "VARNUM", "NUMALIAS"])
+        self.write_statement('$ renpy.pause(%s/1000.0)' % wait.value)
+
+    def cmd_effect(self):
+        # NUM,NUM[,NUM[,STR]]
+        effect_id = self.parser.read(["NUM", "VARNUM", "NUMALIAS"])
+        self.parser.read("COMMA")
+        effect_type = self.parser.read(["NUM", "VARNUM", "NUMALIAS"])
+        comma = self.parser.read("COMMA", mandatory=False)
+        if comma is not None:
+            duration = self.parser.read(["NUM", "VARNUM", "NUMALIAS"])
+            comma = self.parser.read("COMMA", mandatory=False)
+            if comma is not None:
+                filename = self.parser.read(['STR', 'STRALIAS', 'VARSTR'])
+            else:
+                filename = None
+        else:
+            duration = 0
+            filename = None
+
+    def cmd_end(self):
+        self.write_statement('$ renpy.full_restart()')
+
     def cmd_filelog(self):
+        pass
+
+    def cmd_game(self):
         pass
 
     def cmd_globalon(self):
@@ -466,6 +533,9 @@ class Translator(object):
         effect = self.parser.read(["NUM", "VARNUM", "NUMALIAS"])
 
         self.write_statement('$ show_standing(ns_state, %s, "%s")' % (sprite.escaped, pos.escaped))
+
+    def cmd_lookbackcolor(self):
+        col = self.parser.read('COLOR')
 
     def cmd_lsp(self):
         # NUM,STR,NUM,NUM,NUM
@@ -571,6 +641,15 @@ class Translator(object):
     def cmd_return(self):
         self.write_statement('return')
 
+    def cmd_rmenu(self):
+        while True:
+            text = self.parser.read("TEXT")
+            self.parser.read("COMMA")
+            label = self.parser.read("IDENTIFIER")
+
+            if self.parser.read("COMMA", mandatory=False) is None:
+                break
+
     def cmd_s(self):
         # TODO
         pass
@@ -653,16 +732,24 @@ class Translator(object):
         self.parser.straliases[alias] = val
         self.write_statement('# %s = %s' % (alias, val))
 
+    def cmd_systemcall(self):
+        command = self.parser.read("IDENTIFIER").value
+
+    def cmd_textclear(self):
+        self.write_statement('nvl clear')
+
     def cmd_textoff(self):
         self.write_statement('window hide')
 
     def cmd_texton(self):
         self.write_statement('window show')
 
+    def cmd_trap(self):
+        alias = self.parser.read(["IDENTIFIER", "LABEL"])
+
     def cmd_versionstr(self):
         # STR, STR
         v1 = self.parser.read("STR")
-        sys.stderr.write('%s\n' % v1)
         self.parser.read("COMMA")
         self.parser.read("STR")
 
@@ -676,14 +763,13 @@ class Translator(object):
 
     def cmd_w(self):
         # NUM
-        wait = self.parser.read("NUM")
+        wait = self.parser.read(["NUM", "NUMALIAS"])
         self.write_statement('$ renpy.pause(%s/1000.0)' % wait.value)
 
     def cmd_wait(self):
         # NUM
-        wait = self.parser.read("NUM")
+        wait = self.parser.read(["NUM", "VARNUM", "NUMALIAS"])
         self.write_statement('$ renpy.pause(%s/1000.0)' % wait.value)
-
 
     def cmd_waittimer(self):
         # NUM
