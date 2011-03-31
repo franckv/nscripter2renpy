@@ -21,7 +21,7 @@ class Parser(object):
             ("COMMENT", r";.*"),
             ("NUM", r"-?[0-9]+"),
             ("VARNUM", r"%\w*"),
-            ("VARSTR", r"\$\w*"),
+            ("VARSTR", r"\$\%?\w*"),
             ("LABEL", r"\*\w*"),
             ("SKIP", (r"skip\s*-?[0-9]+", self.skip_cb)),
             ("COLOR", r"#[a-fA-F0-9]{6}|white|black"),
@@ -130,6 +130,7 @@ class Translator(object):
         self.parser = parser
         self.out = out
         self.indent = 0
+        self.skipline = 0
 
     def translate(self):
         skipdone = {}
@@ -159,6 +160,9 @@ class Translator(object):
         self.indent = 0
 
     def handle_token(self, token):
+        if token.line == self.skipline:
+            return
+
         if token.type == "IDENTIFIER":
             self.read_command(token)
         elif token.type == "LABEL":
@@ -173,8 +177,11 @@ class Translator(object):
             self.read_skip(token)
         elif token.type == "SEP":
             pass
+        elif token.type == "PLUS":
+            pass
         else:
             sys.stderr.write('Invalid token: %s (%s) at %d\n' % (token.type, token.value, token.line))
+            self.skipline = token.line
 
     def write_statement(self, line, newline=True):
         for i in range(self.indent):
@@ -227,10 +234,14 @@ class Translator(object):
             self.cmd_btndef()
         elif token.value == 'btnwait':
             self.cmd_btnwait()
+        elif token.value == 'caption':
+            self.cmd_caption()
         elif token.value == 'cl':
             self.cmd_cl()
         elif token.value == 'click':
             self.cmd_click()
+        elif token.value == 'clickstr':
+            self.cmd_clickstr()
         elif token.value == 'cmp':
             self.cmd_cmp()
         elif token.value == 'csp':
@@ -245,6 +256,8 @@ class Translator(object):
             self.cmd_delay()
         elif token.value == 'effect':
             self.cmd_effect()
+        elif token.value == 'effectblank':
+            self.cmd_effectblank()
         elif token.value == 'end':
             self.cmd_end()
         elif token.value == 'filelog':
@@ -263,10 +276,16 @@ class Translator(object):
             self.cmd_inc()
         elif token.value == 'ld':
             self.cmd_ld()
+        elif token.value == 'lookbackbutton':
+            self.cmd_lookbackbutton()
         elif token.value == 'lookbackcolor':
             self.cmd_lookbackcolor()
         elif token.value == 'lsp':
             self.cmd_lsp()
+        elif token.value == 'menuselectcolor':
+            self.cmd_menuselectcolor()
+        elif token.value == 'menusetwindow':
+            self.cmd_menusetwindow()
         elif token.value == 'monocro':
             self.cmd_monocro()
         elif token.value == 'mov':
@@ -301,10 +320,16 @@ class Translator(object):
             self.cmd_rmenu()
         elif token.value == '!s':
             self.cmd_s()
+        elif token.value == 'savename':
+            self.cmd_savename()
+        elif token.value == 'savenumber':
+            self.cmd_savenumber()
         elif token.value == '!sd':
             self.cmd_sd()
         elif token.value == 'select':
             self.cmd_select()
+        elif token.value == 'selectcolor':
+            self.cmd_selectcolor()
         elif token.value == 'selgosub':
             self.cmd_selgosub()
         elif token.value == 'setcursor':
@@ -315,6 +340,8 @@ class Translator(object):
             self.cmd_stop()
         elif token.value == 'stralias':
             self.cmd_stralias()
+        elif token.value == 'sub':
+            self.cmd_sub()
         elif token.value == 'systemcall':
             self.cmd_systemcall()
         elif token.value == 'textclear':
@@ -399,6 +426,9 @@ class Translator(object):
         val = Token('NUM', 0, 0)
         self.write_statement('$ %s=%s' % (var.escaped, val.escaped)) 
 
+    def cmd_caption(self):
+        caption = self.parser.read(['STR', 'STRALIAS', 'VARSTR'])
+
     def cmd_cl(self):
         # IDENTIFIER,NUM
         pos = self.parser.read("IDENTIFIER").value
@@ -414,6 +444,15 @@ class Translator(object):
 
     def cmd_click(self):
         self.write_statement('$ renpy.pause()')
+
+    def cmd_clickstr(self):
+        self.parser.read(['STR', 'STRALIAS', 'VARSTR', 'TEXT'])
+        while (self.parser.read('COMMA', mandatory=False) is not None):
+            s = self.parser.read(['STR', 'STRALIAS', 'VARSTR', 'TEXT'], mandatory=False)
+            if s is None:
+                break
+        self.parser.read(["NUM", "VARNUM", "NUMALIAS"])
+
 
     def cmd_cmp(self):
         # VARNUM, STR, STR
@@ -472,6 +511,9 @@ class Translator(object):
             duration = 0
             filename = None
 
+    def cmd_effectblank(self):
+        self.parser.read(["NUM", "VARNUM", "NUMALIAS"])
+
     def cmd_end(self):
         self.write_statement('$ renpy.full_restart()')
 
@@ -515,8 +557,12 @@ class Translator(object):
             self.write_statement("%s:" % stmt)
         self.indent += 1
 
-        token = self.parser.read()
-        self.handle_token(token)
+        while True:
+            token = self.parser.read()
+            self.handle_token(token)
+            sep = self.parser.read('SEP', mandatory=False)
+            if sep is None:
+                break
         self.indent -= 1
 
     def cmd_inc(self):
@@ -533,6 +579,15 @@ class Translator(object):
         effect = self.parser.read(["NUM", "VARNUM", "NUMALIAS"])
 
         self.write_statement('$ show_standing(ns_state, %s, "%s")' % (sprite.escaped, pos.escaped))
+
+    def cmd_lookbackbutton(self):
+        self.parser.read(["STR", "VARSTR", "STRALIAS"])
+        self.parser.read("COMMA")
+        self.parser.read(["STR", "VARSTR", "STRALIAS"])
+        self.parser.read("COMMA")
+        self.parser.read(["STR", "VARSTR", "STRALIAS"])
+        self.parser.read("COMMA")
+        self.parser.read(["STR", "VARSTR", "STRALIAS"])
 
     def cmd_lookbackcolor(self):
         col = self.parser.read('COLOR')
@@ -552,6 +607,21 @@ class Translator(object):
             alpha = '0'
 
         self.write_statement('$ store_show_sprite(ns_state, %s, %s, %s, %s, %s)' % (sprite.escaped, id.escaped, xpos.escaped, ypos.escaped, alpha))
+
+    def cmd_menuselectcolor(self):
+        self.parser.read("COLOR")
+        self.parser.read("COMMA")
+        self.parser.read("COLOR")
+        self.parser.read("COMMA")
+        self.parser.read("COLOR")
+
+    def cmd_menusetwindow(self):
+        # NUM,NUM,NUM,NUM,NUM,NUM,COLOR
+        for i in range(6):
+            self.parser.read("NUM")
+            self.parser.read("COMMA", mandatory=False)
+
+        bg = self.parser.read(["STR", "COLOR"])
 
     def cmd_monocro(self):
         col = self.parser.read(['COLOR', 'IDENTIFIER'])
@@ -651,11 +721,19 @@ class Translator(object):
                 break
 
     def cmd_s(self):
-        # TODO
-        pass
+        speed = self.parser.read(["NUM", "NUMALIAS"])
+
+    def cmd_savename(self):
+        self.parser.read(["STR", "STRALIAS", "VARSTR", "TEXT"])
+        self.parser.read("COMMA")
+        self.parser.read(["STR", "STRALIAS", "VARSTR", "TEXT"])
+        self.parser.read("COMMA")
+        self.parser.read(["STR", "STRALIAS", "VARSTR", "TEXT"])
+
+    def cmd_savenumber(self):
+        self.parser.read(["NUM", "VARNUM", "NUMALIAS"])
 
     def cmd_sd(self):
-        # TODO
         pass
 
     def cmd_select(self):
@@ -672,6 +750,11 @@ class Translator(object):
 
             if self.parser.read("COMMA", mandatory=False) is None:
                 break
+
+    def cmd_selectcolor(self):
+        self.parser.read("COLOR")
+        self.parser.read("COMMA")
+        self.parser.read("COLOR")
 
     def cmd_selgosub(self):
         self.write_statement('menu:')
@@ -731,6 +814,15 @@ class Translator(object):
 
         self.parser.straliases[alias] = val
         self.write_statement('# %s = %s' % (alias, val))
+
+    def cmd_sub(self):
+        # VARNUM, NUM
+        # VARSTR, STR
+        var = self.parser.read("VARNUM")
+        self.parser.read("COMMA")
+        val = self.parser.read(["NUM", "VARNUM", "NUMALIAS"])
+
+        self.write_statement('$ %s-=%s' % (var.escaped, val.escaped)) 
 
     def cmd_systemcall(self):
         command = self.parser.read("IDENTIFIER").value

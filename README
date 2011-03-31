@@ -13,14 +13,18 @@ The following commands are currently (at least partially) supported:
   - btn
   - btndef
   - btnwait
+  - caption
   - cl
   - click
+  - clickstr
   - cmp
   - csp
   - !d
   - date
   - dec
   - delay
+  - effect
+  - effectblank
   - end
   - filelog
   - game
@@ -30,8 +34,11 @@ The following commands are currently (at least partially) supported:
   - if
   - inc
   - ld
+  - lookbackbutton
   - lookbackcolor
   - lsp
+  - menuselectcolor
+  - menusetwindow
   - monocro
   - mov
   - msp
@@ -49,14 +56,18 @@ The following commands are currently (at least partially) supported:
   - return
   - rmenu
   - !s
+  - savename
+  - savenumber
   - !sd
   - select
+  - selectcolor
   - selgosub
   - setcursor
   - setwindow
   - skip
   - stop
   - stralias
+  - sub
   - systemcall
   - textclear
   - textoff

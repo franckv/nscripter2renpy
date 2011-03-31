@@ -1,10 +1,4 @@
 init 1:
-  transform right2:
-    xalign 1.33
-
-  transform left2:
-    xalign -0.03
-
   python:
     menu = nvl_menu
     narrator = Character(None, kind=nvl)
